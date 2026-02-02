@@ -1,14 +1,14 @@
 ---
-name: mlx-audio
+name: qwen3-audio
 description: "High-performance audio library for Apple Silicon with text-to-speech (TTS) and speech-to-text (STT)."
 version: "0.0.1"
 ---
 
-# MLX-Audio
+# Qwen3-Audio
 
 ## Overview
 
-MLX-Audio is a high-performance audio processing library optimized for Apple Silicon (M1/M2/M3/M4). It delivers fast, efficient TTS and STT with support for multiple models, languages, and audio formats.
+Qwen3-Audio is a high-performance audio processing library optimized for Apple Silicon (M1/M2/M3/M4). It delivers fast, efficient TTS and STT with support for multiple models, languages, and audio formats.
 
 ## Prerequisites
 
