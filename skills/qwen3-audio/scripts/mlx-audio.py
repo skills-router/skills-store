@@ -90,6 +90,15 @@ def run_tts(args: argparse.Namespace) -> None:
     text = _normalize_text(args.text)
     ref_text = _normalize_text(args.ref_text) if args.ref_text else None
 
+    # Handle --ref_voice parameter (shortcut for voice_id)
+    if args.ref_voice and not args.ref_audio:
+        voice_path = get_voice_path(args.ref_voice)
+        if voice_path is None:
+            raise ValueError(f"Voice not found: {args.ref_voice}")
+        args.ref_audio = voice_path["ref_audio"]
+        if not args.ref_text:
+            ref_text = voice_path["ref_text"]
+
     kwargs = {
         "text": text,
         "language": args.language,
@@ -449,11 +458,35 @@ def run_stt(args: argparse.Namespace) -> None:
 
 # Voices directory management
 def get_voices_dir() -> str:
-    """Get the voices directory path, create if not exists."""
+    """Get the voices directory path at skill root level, create if not exists."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    voices_dir = os.path.join(script_dir, "voices")
+    skill_dir = os.path.dirname(script_dir)  # Go up from scripts/ to skill root
+    voices_dir = os.path.join(skill_dir, "voices")
     os.makedirs(voices_dir, exist_ok=True)
     return voices_dir
+
+def get_voice_path(voice_id: str) -> dict | None:
+    """Get voice file paths by voice_id. Returns dict with ref_audio and ref_text, or None if not found."""
+    voices_dir = get_voices_dir()
+    voice_dir = os.path.join(voices_dir, voice_id)
+    if not os.path.isdir(voice_dir):
+        return None
+
+    ref_audio = os.path.join(voice_dir, "ref_audio.wav")
+    ref_text_path = os.path.join(voice_dir, "ref_text.txt")
+
+    if not os.path.exists(ref_audio):
+        return None
+
+    ref_text = ""
+    if os.path.exists(ref_text_path):
+        with open(ref_text_path, "r", encoding="utf-8") as f:
+            ref_text = f.read().strip()
+
+    return {
+        "ref_audio": ref_audio,
+        "ref_text": ref_text
+    }
 
 def run_voice_create(args: argparse.Namespace) -> None:
     """Create a new voice by generating audio and saving reference info."""
@@ -466,7 +499,7 @@ def run_voice_create(args: argparse.Namespace) -> None:
     text = _normalize_text(args.text)
 
     # Generate audio using TTS
-    output_audio = os.path.join(voice_dir, "reference.wav")
+    output_audio = os.path.join(voice_dir, "ref_audio.wav")
 
     # Create a namespace for TTS
     tts_args = argparse.Namespace(
@@ -532,7 +565,7 @@ def run_voice_list(args: argparse.Namespace) -> None:
         for voice_id in sorted(os.listdir(voices_dir)):
             voice_dir = os.path.join(voices_dir, voice_id)
             if os.path.isdir(voice_dir):
-                ref_audio = os.path.join(voice_dir, "reference.wav")
+                ref_audio = os.path.join(voice_dir, "ref_audio.wav")
                 ref_text_path = os.path.join(voice_dir, "ref_text.txt")
 
                 ref_text = ""
@@ -583,7 +616,8 @@ def build_parser() -> argparse.ArgumentParser:
     tts.add_argument("--voice", default="Chelsie", help="TTS 语音角色")
     tts.add_argument("--language", default="English", help="TTS 语言")
     tts.add_argument("--speaker", default="Vivian", help="音色")
-    tts.add_argument("--ref_audio", help="参考音频，用于克隆")
+    tts.add_argument("--ref_voice", help="音色ID（使用 voice create 创建的音色）")
+    tts.add_argument("--ref_audio", help="参考音频路径，用于克隆")
     tts.add_argument("--ref_text", help="参考文本，用于克隆")
     tts.add_argument("--instruct", default=None, help="语音风格指令（用于VoiceDesign模型）")
     tts.set_defaults(func=run_tts)

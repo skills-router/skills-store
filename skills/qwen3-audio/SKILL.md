@@ -1,7 +1,7 @@
 ---
 name: qwen3-audio
 description: "High-performance audio library for Apple Silicon with text-to-speech (TTS) and speech-to-text (STT)."
-version: "0.0.2"
+version: "0.0.3"
 ---
 
 # Qwen3-Audio
@@ -43,6 +43,13 @@ uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" tts --text "hello wo
 ref_audio: reference audio to clone
 ref_text: transcript of the reference audio
 
+### Use Created Voice (Shortcut)
+Use a voice created with `voice create` by its ID:
+```bash
+uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" tts --text "hello world" --output "/path_to_save.wav" --ref_voice "my-voice-id"
+```
+This automatically loads `ref_audio` and `ref_text` from the voice profile.
+
 ### CustomVoice (Emotion Control)
 Use predefined voices with emotion/style instructions:
 ```bash
@@ -74,6 +81,10 @@ output-format: "txt" | "ass" | "srt" | "all"
 
 ### Voice Management
 
+Voices are stored in the `voices/` directory at the skill root level. Each voice has its own folder containing:
+- `ref_audio.wav` - Reference audio file
+- `ref_text.txt` - Reference text transcript
+
 #### Create a Voice
 Create a reusable voice profile that can be used for voice cloning:
 ```bash
@@ -85,7 +96,7 @@ Optional: `--id "my-voice-id"` to specify a custom voice ID.
 ```json
 {
   "id": "abc12345",
-  "ref_audio": "/path/to/scripts/voices/abc12345/reference.wav",
+  "ref_audio": "/path/to/skill/voices/abc12345/ref_audio.wav",
   "ref_text": "This is a sample voice reference text.",
   "duration": 3.456,
   "sample_rate": 24000
@@ -103,7 +114,7 @@ uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" voice list
 [
   {
     "id": "abc12345",
-    "ref_audio": "/path/to/scripts/voices/abc12345/reference.wav",
+    "ref_audio": "/path/to/skill/voices/abc12345/ref_audio.wav",
     "ref_text": "This is a sample voice reference text.",
     "duration": 3.456,
     "sample_rate": 24000
@@ -112,9 +123,9 @@ uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" voice list
 ```
 
 #### Use a Created Voice
-After creating a voice, use it for TTS with voice cloning:
+After creating a voice, use it for TTS with the `--ref_voice` parameter:
 ```bash
-uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" tts --text "New text to speak" --output "/output.wav" --ref_audio "/path/to/scripts/voices/abc12345/reference.wav" --ref_text "This is a sample voice reference text."
+uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" tts --text "New text to speak" --output "/output.wav" --ref_voice "abc12345"
 ```
 
 ## Predefined Speakers (CustomVoice)
