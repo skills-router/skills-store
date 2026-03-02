@@ -1,7 +1,7 @@
 ---
 name: qwen3-audio
 description: "High-performance audio library for Apple Silicon with text-to-speech (TTS) and speech-to-text (STT)."
-version: "0.0.1"
+version: "0.0.2"
 ---
 
 # Qwen3-Audio
@@ -24,6 +24,15 @@ Before using any capability, verify that all items in `./references/env-check-li
 ### Text to Speech
 ```bash
 uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" tts --text "hello world" --output "/path_to_save.wav"
+```
+
+**Returns (JSON):**
+```json
+{
+  "audio_path": "/path_to_save.wav",
+  "duration": 1.234,
+  "sample_rate": 24000
+}
 ```
 
 ### Voice Cloning
@@ -53,7 +62,62 @@ uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" stt --audio "/sample
 Test audio: https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav
 output-format: "txt" | "ass" | "srt" | "all"
 
+**Returns (JSON):**
+```json
+{
+  "text": "transcribed text content",
+  "duration": 10.5,
+  "sample_rate": 16000,
+  "files": ["/path_to_save.txt", "/path_to_save.srt"]
+}
+```
 
+### Voice Management
+
+#### Create a Voice
+Create a reusable voice profile that can be used for voice cloning:
+```bash
+uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" voice create --text "This is a sample voice reference text." --language "English"
+```
+Optional: `--id "my-voice-id"` to specify a custom voice ID.
+
+**Returns (JSON):**
+```json
+{
+  "id": "abc12345",
+  "ref_audio": "/path/to/scripts/voices/abc12345/reference.wav",
+  "ref_text": "This is a sample voice reference text.",
+  "duration": 3.456,
+  "sample_rate": 24000
+}
+```
+
+#### List Voices
+List all created voice profiles:
+```bash
+uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" voice list
+```
+
+**Returns (JSON):**
+```json
+[
+  {
+    "id": "abc12345",
+    "ref_audio": "/path/to/scripts/voices/abc12345/reference.wav",
+    "ref_text": "This is a sample voice reference text.",
+    "duration": 3.456,
+    "sample_rate": 24000
+  }
+]
+```
+
+#### Use a Created Voice
+After creating a voice, use it for TTS with voice cloning:
+```bash
+uv run --python ".venv/bin/python" "./scripts/mlx-audio.py" tts --text "New text to speak" --output "/output.wav" --ref_audio "/path/to/scripts/voices/abc12345/reference.wav" --ref_text "This is a sample voice reference text."
+```
+
+## Predefined Speakers (CustomVoice)
 
 For `Qwen3-TTS-12Hz-1.7B/0.6B-CustomVoice` models, the supported speakers and their descriptions are listed below. We recommend using each speaker's native language for best quality. Each speaker can still speak any language supported by the model.
 

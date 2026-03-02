@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import sys
 from typing import Any
@@ -7,6 +8,7 @@ import tempfile
 import shutil
 import urllib.error
 import urllib.request
+import uuid
 import soundfile as sf
 import numpy as np
 # Ensure mlx-audio is available
@@ -66,6 +68,17 @@ def _get_sample_rate(result: Any, model: Any) -> int:
             return int(getattr(model, attr))
     return 24000
 
+def _normalize_text(text: str) -> str:
+    """Normalize text by replacing newlines with spaces and collapsing multiple spaces."""
+    if not text:
+        return text
+    # Replace newlines with spaces
+    text = text.replace('\r\n', ' ').replace('\n', ' ').replace('\r', ' ')
+    # Collapse multiple spaces into one
+    while '  ' in text:
+        text = text.replace('  ', ' ')
+    return text.strip()
+
 # Text-to-Speech
 def run_tts(args: argparse.Namespace) -> None:
     _ensure_mlx_audio()
@@ -73,8 +86,12 @@ def run_tts(args: argparse.Namespace) -> None:
 
     model = load_tts_model(DEFAULT_VOICEDESIGN_MODEL if args.instruct else args.model)
 
+    # Normalize text: replace newlines with spaces
+    text = _normalize_text(args.text)
+    ref_text = _normalize_text(args.ref_text) if args.ref_text else None
+
     kwargs = {
-        "text": args.text,
+        "text": text,
         "language": args.language,
     }
     if args.voice:
@@ -83,8 +100,8 @@ def run_tts(args: argparse.Namespace) -> None:
         kwargs["instruct"] = args.instruct
     if args.ref_audio:
         kwargs["ref_audio"] = args.ref_audio
-    if args.ref_text:
-        kwargs["ref_text"] = args.ref_text
+    if ref_text:
+        kwargs["ref_text"] = ref_text
 
     results = list(model.generate(**kwargs))
     if not results:
@@ -99,8 +116,16 @@ def run_tts(args: argparse.Namespace) -> None:
     # sf.write(fast_output, audio_fast, sample_rate)
     sf.write(args.output, audio, sample_rate)
 
-    # save_audio(result.audio, args.output, sample_rate)
-    print(f"✓ TTS 已生成: {args.output}")
+    # Calculate duration
+    duration = len(audio) / sample_rate
+
+    # Output result as JSON
+    result_data = {
+        "audio_path": args.output,
+        "duration": round(duration, 3),
+        "sample_rate": sample_rate
+    }
+    print(json.dumps(result_data, ensure_ascii=False))
 
 # Speech-to-Text
 def run_stt(args: argparse.Namespace) -> None:
@@ -405,7 +430,131 @@ def run_stt(args: argparse.Namespace) -> None:
     if fmt in ("srt", "all"):
         srt_path = _replace_ext(args.output, "srt")
         _write_srt(srt_path)
-        print(f"✓ STT 已保存: {srt_path}")
+
+    # Output result as JSON
+    result_data = {
+        "text": asr_text,
+        "duration": round(total_sec, 3),
+        "sample_rate": sr,
+        "files": []
+    }
+    if args.output:
+        if fmt in ("txt", "both", "all"):
+            result_data["files"].append(_replace_ext(args.output, "txt"))
+        if fmt in ("ass", "both", "all"):
+            result_data["files"].append(_replace_ext(args.output, "ass"))
+        if fmt in ("srt", "all"):
+            result_data["files"].append(_replace_ext(args.output, "srt"))
+    print(json.dumps(result_data, ensure_ascii=False))
+
+# Voices directory management
+def get_voices_dir() -> str:
+    """Get the voices directory path, create if not exists."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    voices_dir = os.path.join(script_dir, "voices")
+    os.makedirs(voices_dir, exist_ok=True)
+    return voices_dir
+
+def run_voice_create(args: argparse.Namespace) -> None:
+    """Create a new voice by generating audio and saving reference info."""
+    voices_dir = get_voices_dir()
+    voice_id = args.id or str(uuid.uuid4())[:8]
+    voice_dir = os.path.join(voices_dir, voice_id)
+    os.makedirs(voice_dir, exist_ok=True)
+
+    # Normalize text: replace newlines with spaces
+    text = _normalize_text(args.text)
+
+    # Generate audio using TTS
+    output_audio = os.path.join(voice_dir, "reference.wav")
+
+    # Create a namespace for TTS
+    tts_args = argparse.Namespace(
+        text=text,
+        output=output_audio,
+        model=args.model,
+        voice=args.voice,
+        language=args.language,
+        speaker=getattr(args, 'speaker', 'Vivian'),
+        ref_audio=None,
+        ref_text=None,
+        instruct=getattr(args, 'instruct', None),
+    )
+
+    # Run TTS to generate the audio
+    _ensure_mlx_audio()
+    from mlx_audio.tts.utils import load_model as load_tts_model
+
+    model = load_tts_model(DEFAULT_VOICEDESIGN_MODEL if tts_args.instruct else tts_args.model)
+
+    kwargs = {
+        "text": tts_args.text,
+        "language": tts_args.language,
+    }
+    if tts_args.voice:
+        kwargs["voice"] = tts_args.voice
+    if tts_args.instruct:
+        kwargs["instruct"] = tts_args.instruct
+
+    results = list(model.generate(**kwargs))
+    if not results:
+        raise RuntimeError("TTS 生成失败：未返回音频结果")
+
+    result = results[0]
+    sample_rate = _get_sample_rate(result, model)
+    audio = result.audio
+    sf.write(output_audio, audio, sample_rate)
+
+    # Save reference text
+    ref_text_path = os.path.join(voice_dir, "ref_text.txt")
+    with open(ref_text_path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+    # Calculate duration
+    duration = len(audio) / sample_rate
+
+    # Output result as JSON
+    result_data = {
+        "id": voice_id,
+        "ref_audio": output_audio,
+        "ref_text": text,
+        "duration": round(duration, 3),
+        "sample_rate": sample_rate
+    }
+    print(json.dumps(result_data, ensure_ascii=False))
+
+def run_voice_list(args: argparse.Namespace) -> None:
+    """List all created voices."""
+    voices_dir = get_voices_dir()
+    voices = []
+
+    if os.path.exists(voices_dir):
+        for voice_id in sorted(os.listdir(voices_dir)):
+            voice_dir = os.path.join(voices_dir, voice_id)
+            if os.path.isdir(voice_dir):
+                ref_audio = os.path.join(voice_dir, "reference.wav")
+                ref_text_path = os.path.join(voice_dir, "ref_text.txt")
+
+                ref_text = ""
+                if os.path.exists(ref_text_path):
+                    with open(ref_text_path, "r", encoding="utf-8") as f:
+                        ref_text = f.read().strip()
+
+                if os.path.exists(ref_audio):
+                    # Get audio info
+                    audio_data, sr = sf.read(ref_audio)
+                    duration = len(audio_data) / sr
+
+                    voices.append({
+                        "id": voice_id,
+                        "ref_audio": ref_audio,
+                        "ref_text": ref_text,
+                        "duration": round(duration, 3),
+                        "sample_rate": sr
+                    })
+
+    # Output result as JSON
+    print(json.dumps(voices, ensure_ascii=False, indent=2))
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -459,6 +608,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="ASS 样式行（Style: 后的内容）",
     )
     stt.set_defaults(func=run_stt)
+
+    # Voice management commands
+    voice = subparsers.add_parser("voice", help="Voice management")
+    voice_subparsers = voice.add_subparsers(dest="voice_command", required=True)
+
+    # voice create
+    voice_create = voice_subparsers.add_parser("create", help="Create a new voice")
+    voice_create.add_argument("--text", required=True, help="参考文本")
+    voice_create.add_argument("--id", help="音色ID (可选，默认自动生成)")
+    voice_create.add_argument("--model", default=DEFAULT_TTS_MODEL, help="TTS 模型")
+    voice_create.add_argument("--voice", default="Chelsie", help="TTS 语音角色")
+    voice_create.add_argument("--language", default="English", help="TTS 语言")
+    voice_create.add_argument("--instruct", default=None, help="语音风格指令（用于VoiceDesign模型）")
+    voice_create.set_defaults(func=run_voice_create)
+
+    # voice list
+    voice_list = voice_subparsers.add_parser("list", help="List all created voices")
+    voice_list.set_defaults(func=run_voice_list)
 
     return parser
 
