@@ -886,7 +886,9 @@ def run_voice_list(args: argparse.Namespace) -> None:
                         "duration": round(duration, 3),
                         "sample_rate": sr
                     })
-
+    if len(voices) == 0:
+        print("(not found any voices, use 'voice create' command to create one)")
+        return
     # Output result as JSON
     print(json.dumps(voices, ensure_ascii=False, indent=2))
 

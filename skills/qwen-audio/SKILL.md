@@ -31,7 +31,7 @@ Voices are stored in the `./voices/` directory at the skill root level. Each voi
 #### Create a Voice
 Create a reusable voice profile using VoiceDesign model. The `--instruct` parameter is required to describe the voice style:
 ```bash
-uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/scripts/qwen-audio.py" voice create --text "This is a sample voice reference text." --instruct "A warm, friendly female voice with a professional tone." --id "my-voice-id"
+uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" voice create --text "This is a sample voice reference text." --instruct "A warm, friendly female voice with a professional tone." --id "my-voice-id"
 ```
 Optional: `--id "my-voice-id"` to specify a custom voice ID.
 
@@ -39,7 +39,7 @@ Optional: `--id "my-voice-id"` to specify a custom voice ID.
 ```json
 {
   "id": "my-voice-id",
-  "ref_audio": "/<qwen3-audio-skill-path>/voices/my-voice-id/ref_audio.wav",
+  "ref_audio": "/<qwen-audio-skill-path>/voices/my-voice-id/ref_audio.wav",
   "ref_text": "This is a sample voice reference text.",
   "instruct": "A warm, friendly female voice with a professional tone.",
   "duration": 3.456,
@@ -52,7 +52,7 @@ Optional: `--id "my-voice-id"` to specify a custom voice ID.
 #### List Voices
 List all created voice profiles:
 ```bash
-uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/scripts/qwen-audio.py" voice list
+uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" voice list
 ```
 
 **Returns (JSON):**
@@ -60,7 +60,7 @@ uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/sc
 [
   {
     "id": "my-voice-id",
-    "ref_audio": "/<qwen3-audio-skill-path>/voices/my-voice-id/ref_audio.wav",
+    "ref_audio": "/<qwen-audio-skill-path>/voices/my-voice-id/ref_audio.wav",
     "ref_text": "This is a sample voice reference text.",
     "instruct": "A warm, friendly female voice with a professional tone.",
     "duration": 3.456,
@@ -76,13 +76,18 @@ uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/sc
 Before any `tts` generation, always confirm the available voices first:
 
 1. Run `voice list` to check the current voice profiles.
-2. If the returned list is empty, stop and prompt the user to create a voice first with `voice create`.
+2. If the returned list is empty, stop and ask the user what kind of voice they want to create first. Offer style choices, for example:
+   - Warm and friendly female narrator
+   - Deep and steady male broadcast voice
+   - Young and energetic neutral voice
+   - Calm and professional customer-service voice
+   Then run `voice create` only after the user confirms a style.
 3. If the returned list is not empty, show the available voice `id` values and ask the user to confirm which one should be used as the `--ref_voice` reference id for generation.
 
 Only run `tts` after this confirmation step is complete.
 
 ```bash
-uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav"
+uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav"
 ```
 **Returns (JSON):**
 ```json
@@ -97,7 +102,7 @@ uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/sc
 ### Voice Cloning
 Clone any voice using a reference audio sample. Provide the wav file and its transcript:
 ```bash
-uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav" --ref_audio "sample_audio.wav" --ref_text "This is what my voice sounds like."
+uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav" --ref_audio "sample_audio.wav" --ref_text "This is what my voice sounds like."
 ```
 ref_audio: reference audio to clone
 ref_text: transcript of the reference audio
@@ -106,14 +111,14 @@ ref_text: transcript of the reference audio
 #### Use a Created Voice
 After creating a voice, use it for TTS with the `--ref_voice` parameter. The instruct will be automatically loaded:
 ```bash
-uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/scripts/qwen-audio.py" tts --text "New text to speak" --output "/path/to/save.wav" --ref_voice "my-voice-id" --instruct "Very happy and excited."
+uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "New text to speak" --output "/path/to/save.wav" --ref_voice "my-voice-id" --instruct "Very happy and excited."
 ```
 Optional: `--instruct` to emotion control.
 
 
 ### Automatic Speech Recognition (STT)
 ```bash
-uv run --project "/<qwen3-audio-skill-path>" python "<qwen3-audio-skill-path>/scripts/qwen-audio.py" stt --audio "/sample_audio.wav" --output "/path/to/save.txt" --output-format txt
+uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" stt --audio "/sample_audio.wav" --output "/path/to/save.txt" --output-format txt
 ```
 Test audio: https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav
 output-format: "txt" | "ass" | "srt" | "all"

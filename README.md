@@ -34,7 +34,7 @@ High-performance audio processing library optimized
 
 **Quick Start:**
 ```bash
-uv run --project "/<qwen3-audio-skill-path>" python "./scripts/qwen-audio.py" tts --text "hello world" --output "output.wav"
+uv run --project "/<qwen-audio-skill-path>" python "./scripts/qwen-audio.py" tts --text "hello world" --output "output.wav"
 ```
 
 ## Structure
