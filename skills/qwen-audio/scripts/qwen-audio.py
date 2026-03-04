@@ -11,9 +11,26 @@ import urllib.request
 import uuid
 import soundfile as sf
 import numpy as np
-# Ensure mlx-audio is available
+import logging
+logging.basicConfig(level=logging.ERROR)
+
+IS_DARWIN = sys.platform == "darwin"
 
 _MLX_AUDIO_READY = False
+_QWEN_ASR_BACKEND_READY = False
+_QWEN_TTS_BACKEND_READY = False
+
+_QWEN_ASR_TORCH = None
+_QWEN_TTS_TORCH = None
+_QWEN_ASR_MODEL_CLS = None
+_QWEN_TTS_MODEL_CLS = None
+
+_QWEN_ASR_MODEL = None
+_QWEN_ASR_MODEL_KEY = None
+_QWEN_TTS_MODEL = None
+_QWEN_TTS_MODEL_KEY = None
+
+
 
 def _ensure_mlx_audio() -> None:
     global _MLX_AUDIO_READY
@@ -27,6 +44,155 @@ def _ensure_mlx_audio() -> None:
         import mlx_audio  # noqa: F401
         print("✓ mlx-audio 安装完成", file=sys.stderr)
     _MLX_AUDIO_READY = True
+
+
+def _resolve_default_device() -> str:
+    configured = os.environ.get("QWEN_AUDIO_DEVICE")
+    if configured and configured.strip():
+        return configured.strip()
+    try:
+        import torch  # type: ignore
+        if torch.cuda.is_available():
+            return "cuda:0"
+    except Exception:
+        pass
+    return "cpu"
+
+
+DEFAULT_DEVICE = _resolve_default_device()
+DEFAULT_DTYPE = os.environ.get("QWEN_AUDIO_DTYPE", "bf16")
+
+
+def _resolve_torch_dtype(dtype: str, torch: Any) -> Any:
+    norm = (dtype or DEFAULT_DTYPE).lower().strip()
+    table = {
+        "float16": torch.float16,
+        "fp16": torch.float16,
+        "half": torch.float16,
+        "bfloat16": torch.bfloat16,
+        "bf16": torch.bfloat16,
+        "float32": torch.float32,
+        "fp32": torch.float32,
+    }
+    if norm not in table:
+        raise ValueError(f"unsupported dtype: {dtype}")
+    return table[norm]
+
+
+def _normalize_device(device: str) -> str:
+    resolved = (device or DEFAULT_DEVICE).strip().lower()
+    if resolved in {"cuda", "gpu"}:
+        return "cuda:0"
+    return resolved
+
+
+def _ensure_qwen_asr_backend() -> tuple[Any, Any]:
+    global _QWEN_ASR_BACKEND_READY, _QWEN_ASR_TORCH, _QWEN_ASR_MODEL_CLS
+    if _QWEN_ASR_BACKEND_READY and _QWEN_ASR_TORCH is not None and _QWEN_ASR_MODEL_CLS is not None:
+        return _QWEN_ASR_TORCH, _QWEN_ASR_MODEL_CLS
+    try:
+        import torch  # type: ignore
+        from qwen_asr import Qwen3ASRModel  # type: ignore
+    except Exception as exc:
+        raise RuntimeError("qwen-asr 不可用，请先安装 qwen-asr 和 torch") from exc
+    _QWEN_ASR_TORCH = torch
+    _QWEN_ASR_MODEL_CLS = Qwen3ASRModel
+    _QWEN_ASR_BACKEND_READY = True
+    return _QWEN_ASR_TORCH, _QWEN_ASR_MODEL_CLS
+
+
+def _ensure_qwen_tts_backend() -> tuple[Any, Any]:
+    global _QWEN_TTS_BACKEND_READY, _QWEN_TTS_TORCH, _QWEN_TTS_MODEL_CLS
+    if _QWEN_TTS_BACKEND_READY and _QWEN_TTS_TORCH is not None and _QWEN_TTS_MODEL_CLS is not None:
+        return _QWEN_TTS_TORCH, _QWEN_TTS_MODEL_CLS
+    try:
+        import torch  # type: ignore
+        from qwen_tts import Qwen3TTSModel  # type: ignore
+    except Exception as exc:
+        raise RuntimeError("qwen-tts 不可用，请先安装 qwen-tts 和 torch") from exc
+    _QWEN_TTS_TORCH = torch
+    _QWEN_TTS_MODEL_CLS = Qwen3TTSModel
+    _QWEN_TTS_BACKEND_READY = True
+    return _QWEN_TTS_TORCH, _QWEN_TTS_MODEL_CLS
+
+
+def _get_qwen_asr_model(
+    model_name: str,
+    aligner_model: str,
+    device: str = DEFAULT_DEVICE,
+    dtype: str = DEFAULT_DTYPE,
+) -> Any:
+    global _QWEN_ASR_MODEL, _QWEN_ASR_MODEL_KEY
+    torch, Qwen3ASRModel = _ensure_qwen_asr_backend()
+    resolved_device = _normalize_device(device)
+    resolved_dtype = (dtype or DEFAULT_DTYPE).strip()
+    key = json.dumps(
+        {
+            "model": model_name,
+            "aligner_model": aligner_model,
+            "device": resolved_device,
+            "dtype": resolved_dtype,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    if _QWEN_ASR_MODEL is not None and _QWEN_ASR_MODEL_KEY == key:
+        return _QWEN_ASR_MODEL
+
+    torch_dtype = _resolve_torch_dtype(resolved_dtype, torch)
+    _QWEN_ASR_MODEL = Qwen3ASRModel.from_pretrained(
+        model_name,
+        dtype=torch_dtype,
+        device_map=resolved_device,
+        max_inference_batch_size=2,
+        max_new_tokens=8192,
+        forced_aligner=aligner_model,
+        forced_aligner_kwargs={
+            "dtype": torch_dtype,
+            "device_map": resolved_device,
+        },
+    )
+    _QWEN_ASR_MODEL_KEY = key
+    return _QWEN_ASR_MODEL
+
+
+def _get_qwen_tts_model(
+    model_name: str,
+    device: str = DEFAULT_DEVICE,
+    dtype: str = DEFAULT_DTYPE,
+) -> Any:
+    global _QWEN_TTS_MODEL, _QWEN_TTS_MODEL_KEY
+    torch, Qwen3TTSModel = _ensure_qwen_tts_backend()
+    resolved_device = _normalize_device(device)
+    resolved_dtype = (dtype or DEFAULT_DTYPE).strip()
+    key = json.dumps(
+        {
+            "model": model_name,
+            "device": resolved_device,
+            "dtype": resolved_dtype,
+        },
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    if _QWEN_TTS_MODEL is not None and _QWEN_TTS_MODEL_KEY == key:
+        return _QWEN_TTS_MODEL
+
+    load_kwargs = {
+        "device_map": resolved_device,
+        "dtype": _resolve_torch_dtype(resolved_dtype, torch),
+    }
+    if resolved_device.startswith("cuda"):
+        load_kwargs["attn_implementation"] = "flash_attention_2"
+    try:
+        _QWEN_TTS_MODEL = Qwen3TTSModel.from_pretrained(model_name, **load_kwargs)
+    except Exception:
+        if "attn_implementation" not in load_kwargs:
+            raise
+        load_kwargs.pop("attn_implementation", None)
+        _QWEN_TTS_MODEL = Qwen3TTSModel.from_pretrained(model_name, **load_kwargs)
+
+    _QWEN_TTS_MODEL_KEY = key
+    return _QWEN_TTS_MODEL
 
 def _can_reach_hf(endpoint: str, timeout_sec: float = 2.0) -> bool:
     url = endpoint.rstrip("/")
@@ -51,12 +217,43 @@ def _configure_hf(args: argparse.Namespace) -> None:
         os.environ["HF_HUB_OFFLINE"] = "1"
         print("! 无法连接 Hugging Face，已启用离线模式（仅使用本地模型）", file=sys.stderr)
 
-DEFAULT_TTS_MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
-DEFAULT_STT_MODEL = "mlx-community/Qwen3-ASR-1.7B-bf16"
-DEFAULT_ASR_MODEL = "mlx-community/Qwen3-ASR-1.7B-bf16"
-DEFAULT_ALIGNER_MODEL = "mlx-community/Qwen3-ForcedAligner-0.6B-8bit"
-DEFAULT_CUSTOME_MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice"
-DEFAULT_VOICEDESIGN_MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16"
+DEFAULT_TTS_MODEL = (
+    "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+    if IS_DARWIN
+    else "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+)
+DEFAULT_STT_MODEL = (
+    "mlx-community/Qwen3-ASR-1.7B-bf16"
+    if IS_DARWIN
+    else "Qwen/Qwen3-ASR-1.7B"
+)
+DEFAULT_ASR_MODEL = DEFAULT_STT_MODEL
+DEFAULT_ALIGNER_MODEL = (
+    "mlx-community/Qwen3-ForcedAligner-0.6B-8bit"
+    if IS_DARWIN
+    else "Qwen/Qwen3-ForcedAligner-0.6B"
+)
+DEFAULT_CUSTOME_MODEL = (
+    "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    if IS_DARWIN
+    else "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+)
+DEFAULT_VOICEDESIGN_MODEL = (
+    "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16"
+    if IS_DARWIN
+    else "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+)
+
+
+def _default_qwen_speaker(language: str | None) -> str:
+    lang = (language or "").strip().lower()
+    if "en" in lang:
+        return "Ryan"
+    if "japanese" in lang or "jp" in lang:
+        return "Ono_Anna"
+    if "korean" in lang or "ko" in lang:
+        return "Sohee"
+    return "Vivian"
 
 def _get_sample_rate(result: Any, model: Any) -> int:
     # Best-effort sampling rate inference.
@@ -81,11 +278,6 @@ def _normalize_text(text: str) -> str:
 
 # Text-to-Speech
 def run_tts(args: argparse.Namespace) -> None:
-    _ensure_mlx_audio()
-    from mlx_audio.tts.utils import load_model as load_tts_model
-
-    model = load_tts_model(DEFAULT_VOICEDESIGN_MODEL if args.instruct else args.model)
-
     # Normalize text: replace newlines with spaces
     text = _normalize_text(args.text)
     ref_text = _normalize_text(args.ref_text) if args.ref_text else None
@@ -99,181 +291,267 @@ def run_tts(args: argparse.Namespace) -> None:
         if not args.ref_text:
             ref_text = voice_path["ref_text"]
 
-    kwargs = {
-        "text": text,
-        "language": args.language,
-    }
-    if args.voice:
-        kwargs["voice"] = args.voice
-    if args.instruct:
-        kwargs["instruct"] = args.instruct
-    if args.ref_audio:
-        kwargs["ref_audio"] = args.ref_audio
-    if ref_text:
-        kwargs["ref_text"] = ref_text
+    if IS_DARWIN:
+        _ensure_mlx_audio()
+        from mlx_audio.tts.utils import load_model as load_tts_model
 
-    results = list(model.generate(**kwargs))
-    if not results:
-        raise RuntimeError("TTS 生成失败：未返回音频结果")
+        model = load_tts_model(DEFAULT_VOICEDESIGN_MODEL if args.instruct else args.model)
 
-    result = results[0]
-    sample_rate = _get_sample_rate(result, model)
-    audio = result.audio
-    audio_np = np.array(audio, dtype=np.float32)
+        kwargs = {
+            "text": text,
+            "language": args.language,
+        }
+        if args.voice:
+            kwargs["voice"] = args.voice
+        if args.instruct:
+            kwargs["instruct"] = args.instruct
+        if args.ref_audio:
+            kwargs["ref_audio"] = args.ref_audio
+        if ref_text:
+            kwargs["ref_text"] = ref_text
+
+        results = list(model.generate(**kwargs))
+        if not results:
+            raise RuntimeError("TTS 生成失败：未返回音频结果")
+        result = results[0]
+        sample_rate = _get_sample_rate(result, model)
+        audio_np = np.array(result.audio, dtype=np.float32)
+    else:
+        language = args.language if args.language else "English"
+        qwen_voice = args.voice if args.voice and args.voice != "Chelsie" else None
+        speaker = qwen_voice or args.speaker or _default_qwen_speaker(language)
+
+        if args.instruct:
+            model = _get_qwen_tts_model(DEFAULT_VOICEDESIGN_MODEL)
+            wavs, sample_rate = model.generate_voice_design(
+                text=text,
+                language=language,
+                instruct=args.instruct,
+            )
+        elif args.ref_audio or ref_text:
+            if not args.ref_audio or not ref_text:
+                raise ValueError("使用参考音频克隆时必须同时提供 ref_audio 和 ref_text")
+            model = _get_qwen_tts_model(args.model)
+            wavs, sample_rate = model.generate_voice_clone(
+                text=text,
+                language=language,
+                ref_audio=args.ref_audio,
+                ref_text=ref_text,
+            )
+        else:
+            custom_model = (
+                DEFAULT_CUSTOME_MODEL
+                if args.model == DEFAULT_TTS_MODEL
+                else args.model
+            )
+            model = _get_qwen_tts_model(custom_model)
+            kwargs = {
+                "text": text,
+                "language": language,
+                "speaker": speaker,
+            }
+            wavs, sample_rate = model.generate_custom_voice(**kwargs)
+
+        if wavs is None:
+            raise RuntimeError("TTS 生成失败：未返回音频结果")
+        audio = wavs[0] if isinstance(wavs, (list, tuple)) else wavs
+        audio_np = np.array(audio, dtype=np.float32)
+        if audio_np.ndim > 1:
+            audio_np = audio_np.reshape(-1)
+        sample_rate = int(sample_rate) if sample_rate else 24000
+
     # audio_fast = librosa.effects.time_stretch(audio_np, rate=1.2)
     # fast_output = args.output.replace(".wav", "_fast.wav")
     # sf.write(fast_output, audio_fast, sample_rate)
-    sf.write(args.output, audio, sample_rate)
+    sf.write(args.output, audio_np, sample_rate)
 
     # Calculate duration
-    duration = len(audio) / sample_rate
+    duration = len(audio_np) / sample_rate
 
     # Output result as JSON
     result_data = {
-        "audio_path": args.output,
+        "audio_path": os.path.abspath(args.output),
         "duration": round(duration, 3),
-        "sample_rate": sample_rate
+        "sample_rate": sample_rate,
+        "success": True
     }
     print(json.dumps(result_data, ensure_ascii=False))
 
 # Speech-to-Text
 def run_stt(args: argparse.Namespace) -> None:
-    _ensure_mlx_audio()
-    from mlx_audio.stt.utils import load_model as load_stt_model
-
-    asr_model = load_stt_model(args.model)
     if not os.path.exists(args.audio):
         raise FileNotFoundError(f"音频文件不存在: {args.audio}")
-    max_chunk_sec = 120.0
-    min_silence_sec = 0.2
-    tail_silence_window_sec = 3.0
-    merge_tail_sec = 60.0
 
     audio_data, sr = sf.read(args.audio, always_2d=True)
     total_sec = audio_data.shape[0] / sr
-    # chunks_dir = args.chunks_dir
-
-    aligner_model = load_stt_model(args.aligner_model)
     asr_text = ""
-    alignment_result = []
+    alignment_result: list[SimpleNamespace] = []
 
-    if total_sec <= max_chunk_sec:
-        asr_result = asr_model.generate(
-            args.audio,
-            language=args.language,
-            verbose=True,
-        )
-        asr_text = asr_result.text
-        alignment_result = aligner_model.generate(
-            args.audio,
-            text=asr_text,
-            language=args.language,
-        )
-    else:
-        def _find_tail_silence_start(alignment, chunk_len_sec: float) -> float | None:
-            if not alignment:
-                return None
-            window_start = max(0.0, chunk_len_sec - tail_silence_window_sec)
-            gaps = []
+    if IS_DARWIN:
+        _ensure_mlx_audio()
+        from mlx_audio.stt.utils import load_model as load_stt_model
 
-            first = alignment[0]
-            if first.start_time >= min_silence_sec:
-                gaps.append((0.0, first.start_time))
+        asr_model = load_stt_model(args.model)
+        aligner_model = load_stt_model(args.aligner_model)
+        max_chunk_sec = 120.0
+        min_silence_sec = 0.2
+        tail_silence_window_sec = 3.0
+        merge_tail_sec = 60.0
 
-            for i in range(len(alignment) - 1):
-                gap_start = alignment[i].end_time
-                gap_end = alignment[i + 1].start_time
-                if gap_end - gap_start >= min_silence_sec:
-                    gaps.append((gap_start, gap_end))
-
-            last = alignment[-1]
-            if chunk_len_sec - last.end_time >= min_silence_sec:
-                gaps.append((last.end_time, chunk_len_sec))
-
-            if not gaps:
-                return None
-
-            tail_gaps = [
-                gap for gap in gaps if gap[1] < window_start and gap[0] < chunk_len_sec
+        if total_sec <= max_chunk_sec:
+            asr_result = asr_model.generate(
+                args.audio,
+                language=args.language,
+                verbose=True,
+            )
+            asr_text = str(asr_result.text or "").strip()
+            raw_alignment = aligner_model.generate(
+                args.audio,
+                text=asr_text,
+                language=args.language,
+            )
+            alignment_result = [
+                SimpleNamespace(
+                    start_time=float(item.start_time),
+                    end_time=float(item.end_time),
+                    text=str(item.text),
+                )
+                for item in (raw_alignment or [])
             ]
-            if not tail_gaps:
-                return None
-            return max(tail_gaps, key=lambda g: g[0])[0]
+        else:
+            def _find_tail_silence_start(alignment, chunk_len_sec: float) -> float | None:
+                if not alignment:
+                    return None
+                window_start = max(0.0, chunk_len_sec - tail_silence_window_sec)
+                gaps = []
 
-        max_chunk_samples = int(max_chunk_sec * sr)
-        temp_dir = tempfile.mkdtemp(prefix="mlx_audio_stream_")
-        try:
-            start = 0
-            idx = 0
-            total_samples = audio_data.shape[0]
-            while start < total_samples:
-                end = min(start + max_chunk_samples, total_samples)
-                if total_samples - end < int(merge_tail_sec * sr):
-                    end = total_samples
-                chunk_path = os.path.join(temp_dir, f"chunk_{idx:03d}.wav")
-                print(temp_dir)
-                sf.write(chunk_path, audio_data[start:end], sr)
+                first = alignment[0]
+                if first.start_time >= min_silence_sec:
+                    gaps.append((0.0, first.start_time))
 
-                chunk_asr = asr_model.generate(
-                    chunk_path,
-                    language=args.language,
-                    verbose=True,
-                )
-                if chunk_asr.text:
-                    asr_text = f"{asr_text} {chunk_asr.text}".strip()
+                for i in range(len(alignment) - 1):
+                    gap_start = alignment[i].end_time
+                    gap_end = alignment[i + 1].start_time
+                    if gap_end - gap_start >= min_silence_sec:
+                        gaps.append((gap_start, gap_end))
 
-                chunk_alignment = aligner_model.generate(
-                    chunk_path,
-                    text=chunk_asr.text,
-                    language=args.language,
-                )
+                last = alignment[-1]
+                if chunk_len_sec - last.end_time >= min_silence_sec:
+                    gaps.append((last.end_time, chunk_len_sec))
 
-                chunk_len = (end - start) / sr
-                cut_start = None
-                if chunk_alignment:
-                    cut_start = _find_tail_silence_start(chunk_alignment, chunk_len)
+                if not gaps:
+                    return None
 
-                offset = start / sr
+                tail_gaps = [
+                    gap for gap in gaps if gap[1] < window_start and gap[0] < chunk_len_sec
+                ]
+                if not tail_gaps:
+                    return None
+                return max(tail_gaps, key=lambda g: g[0])[0]
 
-                # Advance by nearest tail silence (<=3s from end) to avoid re-running models.
-                if end >= total_samples:
-                    next_start = total_samples
-                elif chunk_alignment:
-                    if cut_start is None:
-                        last_end = chunk_alignment[-1].end_time
-                        next_start = int(round((offset + last_end) * sr))
-                    else:
-                        next_start = int(round((offset + cut_start) * sr))
-                    if next_start <= start:
-                        next_start = end
-                else:
-                    next_start = end
+            max_chunk_samples = int(max_chunk_sec * sr)
+            temp_dir = tempfile.mkdtemp(prefix="mlx_audio_stream_")
+            try:
+                start = 0
+                idx = 0
+                total_samples = audio_data.shape[0]
+                while start < total_samples:
+                    end = min(start + max_chunk_samples, total_samples)
+                    if total_samples - end < int(merge_tail_sec * sr):
+                        end = total_samples
+                    chunk_path = os.path.join(temp_dir, f"chunk_{idx:03d}.wav")
+                    sf.write(chunk_path, audio_data[start:end], sr)
 
-                trim_at = None
-                if cut_start is not None and next_start < end:
-                    trim_at = cut_start
+                    chunk_asr = asr_model.generate(
+                        chunk_path,
+                        language=args.language,
+                        verbose=True,
+                    )
+                    if chunk_asr.text:
+                        asr_text = f"{asr_text} {chunk_asr.text}".strip()
 
-                if trim_at is None:
-                    trimmed_alignment = chunk_alignment
-                else:
-                    trimmed_alignment = [
-                        item for item in chunk_alignment if item.end_time <= trim_at
+                    raw_chunk_alignment = aligner_model.generate(
+                        chunk_path,
+                        text=chunk_asr.text,
+                        language=args.language,
+                    )
+                    chunk_alignment = [
+                        SimpleNamespace(
+                            start_time=float(item.start_time),
+                            end_time=float(item.end_time),
+                            text=str(item.text),
+                        )
+                        for item in (raw_chunk_alignment or [])
                     ]
 
-                for item in trimmed_alignment:
-                    alignment_result.append(
-                        SimpleNamespace(
-                            start_time=item.start_time + offset,
-                            end_time=item.end_time + offset,
-                            text=item.text,
+                    chunk_len = (end - start) / sr
+                    cut_start = None
+                    if chunk_alignment:
+                        cut_start = _find_tail_silence_start(chunk_alignment, chunk_len)
+
+                    offset = start / sr
+
+                    # Advance by nearest tail silence (<=3s from end) to avoid re-running models.
+                    if end >= total_samples:
+                        next_start = total_samples
+                    elif chunk_alignment:
+                        if cut_start is None:
+                            last_end = chunk_alignment[-1].end_time
+                            next_start = int(round((offset + last_end) * sr))
+                        else:
+                            next_start = int(round((offset + cut_start) * sr))
+                        if next_start <= start:
+                            next_start = end
+                    else:
+                        next_start = end
+
+                    trim_at = None
+                    if cut_start is not None and next_start < end:
+                        trim_at = cut_start
+
+                    if trim_at is None:
+                        trimmed_alignment = chunk_alignment
+                    else:
+                        trimmed_alignment = [
+                            item for item in chunk_alignment if item.end_time <= trim_at
+                        ]
+
+                    for item in trimmed_alignment:
+                        alignment_result.append(
+                            SimpleNamespace(
+                                start_time=item.start_time + offset,
+                                end_time=item.end_time + offset,
+                                text=item.text,
+                            )
                         )
-                    )
-                if next_start > total_samples:
-                    next_start = total_samples
-                start = next_start
-                idx += 1
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
+                    if next_start > total_samples:
+                        next_start = total_samples
+                    start = next_start
+                    idx += 1
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+    else:
+        asr_model = _get_qwen_asr_model(args.model, args.aligner_model)
+        results = asr_model.transcribe(
+            audio=args.audio,
+            language=args.language,
+            return_time_stamps=True,
+        )
+        if not isinstance(results, list):
+            results = [results]
+        first = results[0] if results else None
+        asr_text = str(getattr(first, "text", "") or "").strip()
+
+        time_stamps = getattr(first, "time_stamps", None) if first is not None else None
+        ts_items = getattr(time_stamps, "items", []) if time_stamps is not None else []
+        alignment_result = [
+            SimpleNamespace(
+                start_time=float(getattr(item, "start_time", 0.0)),
+                end_time=float(getattr(item, "end_time", 0.0)),
+                text=str(getattr(item, "text", "")),
+            )
+            for item in ts_items
+        ]
     # result = generate_transcription(
     #     model=model,
     #     audio_path=args.audio,
@@ -445,15 +723,16 @@ def run_stt(args: argparse.Namespace) -> None:
         "text": asr_text,
         "duration": round(total_sec, 3),
         "sample_rate": sr,
-        "files": []
+        "files": [],
+        "success": True
     }
     if args.output:
         if fmt in ("txt", "both", "all"):
-            result_data["files"].append(_replace_ext(args.output, "txt"))
+            result_data["files"].append(os.path.abspath(_replace_ext(args.output, "txt")))
         if fmt in ("ass", "both", "all"):
-            result_data["files"].append(_replace_ext(args.output, "ass"))
+            result_data["files"].append(os.path.abspath(_replace_ext(args.output, "ass")))
         if fmt in ("srt", "all"):
-            result_data["files"].append(_replace_ext(args.output, "srt"))
+            result_data["files"].append(os.path.abspath(_replace_ext(args.output, "srt")))
     print(json.dumps(result_data, ensure_ascii=False))
 
 # Voices directory management
@@ -513,25 +792,38 @@ def run_voice_create(args: argparse.Namespace) -> None:
     output_audio = os.path.join(voice_dir, "ref_audio.wav")
 
     # Run TTS to generate the audio (always use VoiceDesign model for voice creation)
-    _ensure_mlx_audio()
-    from mlx_audio.tts.utils import load_model as load_tts_model
+    if IS_DARWIN:
+        _ensure_mlx_audio()
+        from mlx_audio.tts.utils import load_model as load_tts_model
 
-    model = load_tts_model(DEFAULT_VOICEDESIGN_MODEL)
+        model = load_tts_model(DEFAULT_VOICEDESIGN_MODEL)
+        kwargs = {
+            "text": text,
+            "language": args.language,
+            "instruct": instruct,
+        }
+        results = list(model.generate(**kwargs))
+        if not results:
+            raise RuntimeError("TTS 生成失败：未返回音频结果")
+        result = results[0]
+        sample_rate = _get_sample_rate(result, model)
+        audio_np = np.array(result.audio, dtype=np.float32)
+    else:
+        model = _get_qwen_tts_model(DEFAULT_VOICEDESIGN_MODEL)
+        wavs, sample_rate = model.generate_voice_design(
+            text=text,
+            language=args.language,
+            instruct=instruct,
+        )
+        if wavs is None:
+            raise RuntimeError("TTS 生成失败：未返回音频结果")
+        audio = wavs[0] if isinstance(wavs, (list, tuple)) else wavs
+        audio_np = np.array(audio, dtype=np.float32)
+        if audio_np.ndim > 1:
+            audio_np = audio_np.reshape(-1)
+        sample_rate = int(sample_rate) if sample_rate else 24000
 
-    kwargs = {
-        "text": text,
-        "language": args.language,
-        "instruct": instruct,
-    }
-
-    results = list(model.generate(**kwargs))
-    if not results:
-        raise RuntimeError("TTS 生成失败：未返回音频结果")
-
-    result = results[0]
-    sample_rate = _get_sample_rate(result, model)
-    audio = result.audio
-    sf.write(output_audio, audio, sample_rate)
+    sf.write(output_audio, audio_np, sample_rate)
 
     # Save reference text
     ref_text_path = os.path.join(voice_dir, "ref_text.txt")
@@ -544,7 +836,7 @@ def run_voice_create(args: argparse.Namespace) -> None:
         f.write(instruct)
 
     # Calculate duration
-    duration = len(audio) / sample_rate
+    duration = len(audio_np) / sample_rate
 
     # Output result as JSON
     result_data = {
@@ -553,7 +845,8 @@ def run_voice_create(args: argparse.Namespace) -> None:
         "ref_text": text,
         "instruct": instruct,
         "duration": round(duration, 3),
-        "sample_rate": sample_rate
+        "sample_rate": sample_rate,
+        "success": True
     }
     print(json.dumps(result_data, ensure_ascii=False))
 
