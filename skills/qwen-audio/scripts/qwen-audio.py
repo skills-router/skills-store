@@ -39,10 +39,10 @@ def _ensure_mlx_audio() -> None:
     try:
         import mlx_audio  # noqa: F401
     except ImportError:
-        print("✗ mlx-audio 未安装，正在安装...", file=sys.stderr)
+        print("mlx-audio 未安装，正在安装...", file=sys.stderr)
         os.system("uv add mlx-audio --prerelease=allow")
         import mlx_audio  # noqa: F401
-        print("✓ mlx-audio 安装完成", file=sys.stderr)
+        print("mlx-audio installed", file=sys.stderr)
     _MLX_AUDIO_READY = True
 
 
@@ -705,14 +705,14 @@ def run_stt(args: argparse.Namespace) -> None:
             txt_path = _replace_ext(args.output, "txt")
             with open(txt_path, "w", encoding="utf-8") as f:
                 f.write(asr_text)
-            print(f"✓ STT 已保存: {txt_path}")
+            print(f"STT Saved: {txt_path}")
         else:
             print(asr_text)
 
     if fmt in ("ass", "both", "all"):
         ass_path = _replace_ext(args.output, "ass")
         _write_ass(ass_path)
-        print(f"✓ STT 已保存: {ass_path}")
+        print(f"STT Saved: {ass_path}")
 
     if fmt in ("srt", "all"):
         srt_path = _replace_ext(args.output, "srt")
@@ -804,7 +804,7 @@ def run_voice_create(args: argparse.Namespace) -> None:
         }
         results = list(model.generate(**kwargs))
         if not results:
-            raise RuntimeError("TTS 生成失败：未返回音频结果")
+            raise RuntimeError("TTS Failed：未返回音频结果")
         result = results[0]
         sample_rate = _get_sample_rate(result, model)
         audio_np = np.array(result.audio, dtype=np.float32)
@@ -816,7 +816,7 @@ def run_voice_create(args: argparse.Namespace) -> None:
             instruct=instruct,
         )
         if wavs is None:
-            raise RuntimeError("TTS 生成失败：未返回音频结果")
+            raise RuntimeError("TTS Failed：未返回音频结果")
         audio = wavs[0] if isinstance(wavs, (list, tuple)) else wavs
         audio_np = np.array(audio, dtype=np.float32)
         if audio_np.ndim > 1:
