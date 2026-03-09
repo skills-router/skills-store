@@ -45,6 +45,15 @@
     "bun": ">=1.0.0"
   },
   "description": "Xiaohongshu automation CLI for Skills Router",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skills-router/skills-store.git",
+    "directory": "packages/rednote"
+  },
+  "homepage": "https://github.com/skills-router/skills-store/tree/main/packages/rednote",
+  "bugs": {
+    "url": "https://github.com/skills-router/skills-store/issues"
+  },
   "publishConfig": {
     "access": "public"
   },
