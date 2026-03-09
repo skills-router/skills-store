@@ -1,0 +1,54 @@
+{
+  "name": "@skills-store/rednote",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "rednote": "./bin/rednote.js"
+  },
+  "scripts": {
+    "rednote": "node --experimental-strip-types ./scripts/index.ts",
+    "browser": "node --experimental-strip-types ./scripts/browser/index.ts",
+    "env": "node --experimental-strip-types ./scripts/rednote/env.ts",
+    "status": "node --experimental-strip-types ./scripts/rednote/status.ts",
+    "check-login": "node --experimental-strip-types ./scripts/rednote/checkLogin.ts",
+    "login": "node --experimental-strip-types ./scripts/rednote/login.ts",
+    "home": "node --experimental-strip-types ./scripts/rednote/home.ts",
+    "search": "node --experimental-strip-types ./scripts/rednote/search.ts",
+    "get-feed-detail": "node --experimental-strip-types ./scripts/rednote/getFeedDetail.ts",
+    "get-profile": "node --experimental-strip-types ./scripts/rednote/getProfile.ts",
+    "bun:rednote": "bun ./scripts/index.ts",
+    "bun:browser": "bun ./scripts/browser/index.ts",
+    "bun:env": "bun ./scripts/rednote/env.ts",
+    "bun:status": "bun ./scripts/rednote/status.ts",
+    "bun:check-login": "bun ./scripts/rednote/checkLogin.ts",
+    "bun:login": "bun ./scripts/rednote/login.ts",
+    "bun:home": "bun ./scripts/rednote/home.ts",
+    "bun:search": "bun ./scripts/rednote/search.ts",
+    "bun:get-feed-detail": "bun ./scripts/rednote/getFeedDetail.ts",
+    "bun:get-profile": "bun ./scripts/rednote/getProfile.ts"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "chrome-paths": "^1.0.1",
+    "edge-paths": "^3.0.5",
+    "pid-port": "^1.0.2",
+    "playwright-core": "^1.52.0",
+    "ps-list": "^8.1.1"
+  },
+  "engines": {
+    "node": ">=22.6.0",
+    "bun": ">=1.0.0"
+  },
+  "description": "Xiaohongshu automation CLI for Skills Router",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin/rednote.js",
+    "scripts",
+    "README.md",
+    "package.json",
+    "tsconfig.json"
+  ]
+}

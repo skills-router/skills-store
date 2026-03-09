@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "lastConnect": {
+    "scope": "custom",
+    "name": "seller-main",
+    "browser": "chrome"
+  },
+  "instances": [
+    {
+      "name": "seller-main",
+      "browser": "chrome",
+      "userDataDir": "/Volumes/Data/workspace/skills-store/skills/rednote/instances/seller-main",
+      "createdAt": "2026-03-08T15:34:21.379Z",
+      "remoteDebuggingPort": 50037
+    }
+  ]
+}

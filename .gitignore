@@ -211,3 +211,7 @@ skills/*/config.json
 
 # Skills tests folder
 skills-tests/
+
+
+.npm-cache/
+.tmp-rednote-home/
