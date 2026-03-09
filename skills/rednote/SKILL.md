@@ -50,31 +50,31 @@ For most operational tasks, use this sequence:
 List browser instances:
 
 ```bash
-npx -y @skills-store/rednote browser list
+rednote browser list
 ```
 
 Create a browser instance:
 
 ```bash
-npx -y @skills-store/rednote browser create --name seller-main --browser chrome --port 9222
+rednote browser create --name seller-main --browser chrome --port 9222
 ```
 
 Connect to an instance:
 
 ```bash
-npx -y @skills-store/rednote browser connect --instance seller-main
+rednote browser connect --instance seller-main
 ```
 
 Connect with explicit profile path:
 
 ```bash
-npx -y @skills-store/rednote browser connect --browser edge --user-data-dir /tmp/edge-profile --port 9223
+rednote browser connect --browser edge --user-data-dir /tmp/edge-profile --port 9223
 ```
 
 Remove an instance:
 
 ```bash
-npx -y @skills-store/rednote browser remove --name seller-main
+rednote browser remove --name seller-main
 ```
 
 Use `browser` whenever the user needs browser setup, profile management, or a reusable instance for later commands.
@@ -84,8 +84,8 @@ Use `browser` whenever the user needs browser setup, profile management, or a re
 Show runtime and storage info:
 
 ```bash
-npx -y @skills-store/rednote env
-npx -y @skills-store/rednote env --format json
+rednote env
+rednote env --format json
 ```
 
 Use `env` first when the user is debugging installation or local setup.
@@ -95,7 +95,7 @@ Use `env` first when the user is debugging installation or local setup.
 Check the selected instance state:
 
 ```bash
-npx -y @skills-store/rednote status --instance seller-main
+rednote status --instance seller-main
 ```
 
 Use `status` to confirm whether the instance exists, is running, and appears logged in.
@@ -105,7 +105,7 @@ Use `status` to confirm whether the instance exists, is running, and appears log
 Check login state only:
 
 ```bash
-npx -y @skills-store/rednote check-login --instance seller-main
+rednote check-login --instance seller-main
 ```
 
 Use this when the user specifically wants to know whether the account session is still valid.
@@ -115,7 +115,7 @@ Use this when the user specifically wants to know whether the account session is
 Open login flow for an instance:
 
 ```bash
-npx -y @skills-store/rednote login --instance seller-main
+rednote login --instance seller-main
 ```
 
 Use `login` after `browser connect` if the account is not authenticated yet.
@@ -125,7 +125,7 @@ Use `login` after `browser connect` if the account is not authenticated yet.
 Read home feed content:
 
 ```bash
-npx -y @skills-store/rednote home --instance seller-main --format md --save
+rednote home --instance seller-main --format md --save
 ```
 
 Use `home` when the user wants the current home feed or wants to save it to disk.
@@ -135,8 +135,8 @@ Use `home` when the user wants the current home feed or wants to save it to disk
 Search by keyword:
 
 ```bash
-npx -y @skills-store/rednote search --instance seller-main --keyword 护肤
-npx -y @skills-store/rednote search --instance seller-main --keyword 护肤 --format json --save ./output/search.jsonl
+rednote search --instance seller-main --keyword 护肤
+rednote search --instance seller-main --keyword 护肤 --format json --save ./output/search.jsonl
 ```
 
 Use `search` when the user wants RED notes by keyword and optionally wants machine-readable output.
@@ -146,7 +146,7 @@ Use `search` when the user wants RED notes by keyword and optionally wants machi
 Fetch a note by URL:
 
 ```bash
-npx -y @skills-store/rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
+rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
 ```
 
 Use this when the user already has a Xiaohongshu note URL and wants structured detail data.
@@ -156,7 +156,7 @@ Use this when the user already has a Xiaohongshu note URL and wants structured d
 Fetch a profile by user ID:
 
 ```bash
-npx -y @skills-store/rednote get-profile --instance seller-main --id USER_ID
+rednote get-profile --instance seller-main --id USER_ID
 ```
 
 Use this when the user wants author or account profile information.

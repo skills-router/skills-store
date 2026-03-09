@@ -12,6 +12,7 @@ Commands:
   status [--instance NAME]
   check-login [--instance NAME]
   login [--instance NAME]
+  publish [--instance NAME]
   home [--instance NAME] [--format md|json] [--save [PATH]]
   search [--instance NAME] --keyword TEXT [--format md|json] [--save [PATH]]
   get-feed-detail [--instance NAME] --url URL [--url URL] [--format md|json]
@@ -23,6 +24,7 @@ Examples:
   npx -y @skills-store/rednote env
   npx -y @skills-store/rednote status --instance seller-main
   npx -y @skills-store/rednote login --instance seller-main
+  npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --description 描述
   npx -y @skills-store/rednote home --instance seller-main --format md --save
   npx -y @skills-store/rednote search --instance seller-main --keyword 护肤 --format json --save ./output/search.jsonl
   npx -y @skills-store/rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
@@ -85,6 +87,12 @@ export async function runRednoteCli(argv: string[] = process.argv.slice(2)) {
   if (command === 'login') {
     const { runLoginCommand } = await import('./login.ts');
     await runLoginCommand({ instance: basicValues.instance, help: basicValues.help });
+    return;
+  }
+
+  if (command === 'publish') {
+    const { runPublishCommand } = await import('./publish.ts');
+    await runPublishCommand({ instance: basicValues.instance, help: basicValues.help });
     return;
   }
 
