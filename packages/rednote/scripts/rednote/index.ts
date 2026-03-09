@@ -24,7 +24,7 @@ Examples:
   npx -y @skills-store/rednote env
   npx -y @skills-store/rednote status --instance seller-main
   npx -y @skills-store/rednote login --instance seller-main
-  npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --description 描述
+  npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --content 描述
   npx -y @skills-store/rednote home --instance seller-main --format md --save
   npx -y @skills-store/rednote search --instance seller-main --keyword 护肤 --format json --save ./output/search.jsonl
   npx -y @skills-store/rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
@@ -91,8 +91,8 @@ export async function runRednoteCli(argv: string[] = process.argv.slice(2)) {
   }
 
   if (command === 'publish') {
-    const { runPublishCommand } = await import('./publish.ts');
-    await runPublishCommand({ instance: basicValues.instance, help: basicValues.help });
+    const { parsePublishCliArgs, runPublishCommand } = await import('./publish.ts');
+    await runPublishCommand(parsePublishCliArgs(commandArgv));
     return;
   }
 

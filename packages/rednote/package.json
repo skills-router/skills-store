@@ -1,12 +1,14 @@
 {
   "name": "@skills-store/rednote",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "private": false,
   "type": "module",
   "bin": {
     "rednote": "./bin/rednote.js"
   },
   "scripts": {
+    "build": "node ./build.mjs",
+    "prepack": "npm run build",
     "rednote": "node --experimental-strip-types ./scripts/index.ts",
     "browser": "node --experimental-strip-types ./scripts/browser/index.ts",
     "env": "node --experimental-strip-types ./scripts/rednote/env.ts",
@@ -48,9 +50,8 @@
   },
   "files": [
     "bin/rednote.js",
-    "scripts",
+    "dist",
     "README.md",
-    "package.json",
-    "tsconfig.json"
+    "package.json"
   ]
 }

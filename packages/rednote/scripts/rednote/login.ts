@@ -3,7 +3,7 @@
 import { parseArgs } from 'node:util';
 import { printJson, runCli } from '../utils/browser-cli.ts';
 import { resolveStatusTarget, type RednoteStatusTarget } from './status.ts';
-import { createRednoteSession, disconnectRednoteSession, type RednoteSession } from './checkLogin.ts';
+import { checkRednoteLogin, createRednoteSession, disconnectRednoteSession, type RednoteSession } from './checkLogin.ts';
 
 export type LoginCliValues = {
   instance?: string;
@@ -12,14 +12,6 @@ export type LoginCliValues = {
 
 export type LoginResult = {
   ok: true;
-  instance: {
-    scope: 'default' | 'custom';
-    name: string;
-    browser: RednoteStatusTarget['browser'];
-    userDataDir: string | null;
-    source: RednoteStatusTarget['source'];
-    lastConnect: boolean;
-  };
   rednote: {
     loginClicked: boolean;
     pageUrl: string;
@@ -55,22 +47,27 @@ async function getOrCreateXiaohongshuPage(session: RednoteSession) {
 }
 
 export async function openRednoteLogin(target: RednoteStatusTarget, session: RednoteSession): Promise<LoginResult> {
+  const rednoteStatus = await checkRednoteLogin(target, session);
+
+  if (!rednoteStatus.needLogin) {
+    return {
+      ok: true,
+      rednote: {
+        loginClicked: false,
+        pageUrl: session.page.url(),
+        waitingForPhoneLogin: false,
+        message: '当前实例已登录，无需重复执行登录操作。',
+      },
+    };
+  }
+
   const { page } = await getOrCreateXiaohongshuPage(session);
-  await page.waitForTimeout(2_000);
   const loginButton = page.locator('#login-btn');
   const hasLoginButton = (await loginButton.count()) > 0;
 
   if (!hasLoginButton) {
     return {
       ok: true,
-      instance: {
-        scope: target.scope,
-        name: target.instanceName,
-        browser: target.browser,
-        userDataDir: target.userDataDir,
-        source: target.source,
-        lastConnect: target.lastConnect,
-      },
       rednote: {
         loginClicked: false,
         pageUrl: page.url(),
@@ -79,20 +76,11 @@ export async function openRednoteLogin(target: RednoteStatusTarget, session: Red
       },
     };
   }
-
-  await loginButton.first().click();
+  await loginButton.first().click({ timeout: 2000 });
   await page.waitForTimeout(500);
 
   return {
     ok: true,
-    instance: {
-      scope: target.scope,
-      name: target.instanceName,
-      browser: target.browser,
-      userDataDir: target.userDataDir,
-      source: target.source,
-      lastConnect: target.lastConnect,
-    },
     rednote: {
       loginClicked: true,
       pageUrl: page.url(),

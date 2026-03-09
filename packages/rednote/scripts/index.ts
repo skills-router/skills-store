@@ -26,7 +26,7 @@ Examples:
   npx -y @skills-store/rednote browser create --name seller-main --browser chrome
   npx -y @skills-store/rednote browser connect --instance seller-main
   npx -y @skills-store/rednote env
-  npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --description 描述
+  npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --content 描述
   npx -y @skills-store/rednote search --instance seller-main --keyword 护肤
 `);
 }
