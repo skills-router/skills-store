@@ -204,7 +204,6 @@ dmypy.json
 # Project specific
 .aime-chat/
 main.py
-README.md
 
 # Skill config files (contain API keys)
 skills/*/config.json
