@@ -1,34 +1,25 @@
 ---
 name: rednote
-description: Use when the user asks how to run `@skills-store/rednote` commands such as `browser`, `search`, `env`, `status`, `check-login`, `login`, `home`, `get-feed-detail`, or `get-profile` from the terminal.
+description: Use when the user needs to publish, search, query, or otherwise operate Xiaohongshu (RedNote).
 ---
 
 # Rednote Commands
 
-Use this skill only for the CLI command surface of `@skills-store/rednote`.
+Use this skill only for the CLI command surface of `@skills-store/rednote` when the user wants to publish, search, query, or operate Xiaohongshu from the terminal.
 
 Focus on telling the user which command to run, which flags matter, and what order to use the commands in.
 
 ## Preferred command style
 
-Prefer published-package examples first:
-
-```bash
-npx -y @skills-store/rednote <command> [...args]
-```
-
-If the user wants global installation, show these commands:
+Prefer global-install examples first:
 
 ```bash
 npm install -g @skills-store/rednote
 bun add -g @skills-store/rednote
-```
-
-After global installation, the executable name is `rednote`, not `@skills-store/rednote`:
-
-```bash
 rednote <command> [...args]
 ```
+
+Only mention `npx -y @skills-store/rednote ...` if the user explicitly asks for one-off execution without global installation.
 
 Only show local repo commands if the user is explicitly developing the CLI.
 
@@ -41,7 +32,7 @@ For most operational tasks, use this sequence:
 3. `browser connect`
 4. `login` or `check-login`
 5. `status`
-6. `home`, `search`, `get-feed-detail`, or `get-profile`
+6. `publish`, `home`, `search`, `get-feed-detail`, or `get-profile`
 
 ## Quick reference
 
@@ -120,6 +111,43 @@ rednote login --instance seller-main
 
 Use `login` after `browser connect` if the account is not authenticated yet.
 
+### `publish`
+
+Publish content for an authenticated instance.
+
+Video note:
+
+```bash
+rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --content 描述 --tag 穿搭 --tag 日常 --publish
+```
+
+Image note:
+
+```bash
+rednote publish --instance seller-main --type image --image ./1.jpg --image ./2.jpg --title 标题 --content 描述 --tag 探店 --publish
+```
+
+Article:
+
+```bash
+rednote publish --instance seller-main --type article --title 标题 --content $'# 一级标题\n\n正文' --publish
+```
+
+Parameter guidance:
+
+- `--instance NAME` is optional and defaults to the saved last connected instance.
+- `--type video|image|article` is optional; if omitted, the CLI infers it from `--video` or `--image`, otherwise it falls back to `article`.
+- `--title TEXT` is required for every publish type.
+- `--content TEXT` is required for every publish type; for video and image it is the description, for article it is Markdown content.
+- `--video PATH` is required for `video` and only one file is allowed.
+- `--image PATH` is required for `image`; repeat it for multiple images, up to 15 files, and the first image becomes the cover.
+- `--tag TEXT` is optional and repeatable for `video` and `image`; tags are normalized and deduplicated.
+- `--publish` publishes immediately; without it, `publish` saves a draft by default.
+- `article` must not be combined with `--video`, `--image`, or `--tag`.
+- `video` and `image` must not be mixed in the same command.
+
+Use `publish` when the user wants to post or save drafts to Xiaohongshu from an authenticated browser instance.
+
 ### `home`
 
 Read home feed content:
@@ -168,6 +196,8 @@ Use this when the user wants author or account profile information.
 - `--format md` is best for direct reading.
 - `--save` is useful for `home` and `search` when the user wants saved output.
 - `--keyword` is required for `search`.
+- `--type`, `--title`, `--content`, `--video`, `--image`, `--tag`, and `--publish` are the main `publish` flags.
+- `publish` usually requires a connected and logged-in instance before running; without `--publish`, it saves a draft.
 - `--url` is required for `get-feed-detail`.
 - `--id` is required for `get-profile`.
 
