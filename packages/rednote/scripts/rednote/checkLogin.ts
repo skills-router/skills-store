@@ -76,9 +76,9 @@ export async function createRednoteSession(target: RednoteStatusTarget): Promise
   };
 }
 
-export function disconnectRednoteSession(session: RednoteSession) {
+export async function disconnectRednoteSession(session: RednoteSession) {
   try {
-    (session.browser as Browser & { _connection?: { close: () => void } })._connection?.close();
+    await session.browser.close();
   } catch {
   }
 }
@@ -116,7 +116,7 @@ export async function checkRednoteLogin(
     };
   } finally {
     if (ownsSession) {
-      disconnectRednoteSession(activeSession);
+      await disconnectRednoteSession(activeSession);
     }
   }
 }

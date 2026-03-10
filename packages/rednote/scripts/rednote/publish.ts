@@ -656,7 +656,7 @@ export async function runPublishCommand(values: PublishCliValues) {
     const result = await openRednotePublish(session, payload);
     printJson(result);
   } finally {
-    disconnectRednoteSession(session);
+    await disconnectRednoteSession(session);
   }
 }
 

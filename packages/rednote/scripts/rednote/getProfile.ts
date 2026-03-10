@@ -408,7 +408,7 @@ export async function runGetProfileCommand(values: GetProfileCliValues = { forma
     const result = await getProfile(session, buildProfileUrl(normalizedUserId), normalizedUserId);
     writeProfileOutput(result, values.format);
   } finally {
-    disconnectRednoteSession(session);
+    await disconnectRednoteSession(session);
   }
 }
 

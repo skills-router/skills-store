@@ -189,7 +189,7 @@ async function collectHomeFeedItems(page: Page) {
         }
 
         const url = new URL(response.url());
-        if (!url.href.endsWith('/explore')) {
+        if (url.pathname !== '/explore' && url.pathname !== '/explore/') {
           return;
         }
 
@@ -236,10 +236,10 @@ async function collectHomeFeedItems(page: Page) {
     page.on('response', handleResponse);
   });
 
-  if (page.url().startsWith('https://www.xiaohongshu.com/explore')) {
+  if (page.url() === 'https://www.xiaohongshu.com/explore/') {
     await page.reload({ waitUntil: 'domcontentloaded' });
   } else {
-    await page.goto('https://www.xiaohongshu.com/explore', { waitUntil: 'domcontentloaded' });
+    await page.goto('https://www.xiaohongshu.com/explore/', { waitUntil: 'domcontentloaded' });
   }
 
   await page.waitForTimeout(500);
@@ -298,7 +298,7 @@ export async function runHomeCommand(values: HomeCliValues = { format: 'md', sav
     const result = await getRednoteHomePosts(session);
     writeHomeOutput(result, values);
   } finally {
-    disconnectRednoteSession(session);
+    await disconnectRednoteSession(session);
   }
 }
 

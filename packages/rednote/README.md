@@ -1,6 +1,6 @@
 # @skills-store/rednote
 
-A Xiaohongshu (RED) automation CLI for browser session management, login, search, feed detail lookup, and profile lookup.
+A Xiaohongshu (RED) automation CLI for browser session management, login, search, feed detail lookup, profile lookup, and note interactions such as like, collect, and comment.
 
 ## Install
 
@@ -27,7 +27,7 @@ For most tasks, run commands in this order:
 3. browser connect
 4. login or check-login
 5. status
-6. home, search, get-feed-detail, or get-profile
+6. home, search, get-feed-detail, get-profile, comment, or interact
 ```
 
 ## Quick start
@@ -39,6 +39,8 @@ rednote browser connect --instance seller-main
 rednote login --instance seller-main
 rednote status --instance seller-main
 rednote search --instance seller-main --keyword 护肤
+rednote comment --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --content "写得真好"
+rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action like
 ```
 
 ## Commands
@@ -121,6 +123,24 @@ rednote get-profile --instance seller-main --id USER_ID
 
 Use `get-profile` when you want author or account profile information.
 
+### `comment`
+
+```bash
+rednote comment --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --content "写得真好"
+```
+
+Use `comment` when you want to open a note detail page, type into the comment box, and click the send button.
+
+### `interact`
+
+```bash
+rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action like
+rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action collect
+rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action comment --content "写得真好"
+```
+
+Use `interact` when you want a single entrypoint for like, collect, or comment operations on a note.
+
 ## Important flags
 
 - `--instance NAME` selects the browser instance for account-scoped commands.
@@ -130,6 +150,342 @@ Use `get-profile` when you want author or account profile information.
 - `--keyword` is required for `search`.
 - `--url` is required for `get-feed-detail`.
 - `--id` is required for `get-profile`.
+- `--url` and `--content` are required for `comment`.
+- `--url` and `--action` are required for `interact`; `--content` is additionally required when `--action comment`.
+
+## JSON success shapes
+
+Use these shapes as the success model when a command returns JSON.
+
+### Shared note item
+
+`home`, `search`, and `profile.notes` share the normalized `RednotePost` shape:
+
+```json
+{
+  "id": "string",
+  "modelType": "string",
+  "xsecToken": "string|null",
+  "url": "string",
+  "noteCard": {
+    "type": "string|null",
+    "displayTitle": "string|null",
+    "cover": {
+      "urlDefault": "string|null",
+      "urlPre": "string|null",
+      "url": "string|null",
+      "fileId": "string|null",
+      "width": "number|null",
+      "height": "number|null",
+      "infoList": [{ "imageScene": "string|null", "url": "string|null" }]
+    },
+    "user": {
+      "userId": "string|null",
+      "nickname": "string|null",
+      "nickName": "string|null",
+      "avatar": "string|null",
+      "xsecToken": "string|null"
+    },
+    "interactInfo": {
+      "liked": "boolean",
+      "likedCount": "string|null",
+      "commentCount": "string|null",
+      "collectedCount": "string|null",
+      "sharedCount": "string|null"
+    },
+    "cornerTagInfo": [{ "type": "string|null", "text": "string|null" }],
+    "imageList": [{ "width": "number|null", "height": "number|null", "infoList": [{ "imageScene": "string|null", "url": "string|null" }] }],
+    "video": { "duration": "number|null" }
+  }
+}
+```
+
+### `env --format json`
+
+`env` is the main exception: it returns a raw environment object instead of `{ "ok": true, ... }`.
+
+```json
+{
+  "packageRoot": "string",
+  "homeDir": "string",
+  "platform": "string",
+  "nodeVersion": "string",
+  "storageHome": "string",
+  "storageRoot": "string",
+  "instancesDir": "string",
+  "instanceStorePath": "string",
+  "legacyPackageInstancesDir": "string"
+}
+```
+
+### Browser commands
+
+`browser list`:
+
+```json
+{
+  "lastConnect": { "scope": "default|custom", "name": "string", "browser": "chrome|edge|chromium|brave" } | null,
+  "instances": [{
+    "type": "chrome|edge|chromium|brave",
+    "name": "string",
+    "executablePath": "string",
+    "userDataDir": "string",
+    "exists": true,
+    "inUse": false,
+    "pid": "number|null",
+    "lockFiles": ["string"],
+    "matchedProcess": { "pid": "number", "name": "string", "cmdline": "string" } | null,
+    "staleLock": false,
+    "remotePort": "number|null",
+    "scope": "default|custom",
+    "instanceName": "string",
+    "createdAt": "string|null",
+    "lastConnect": false
+  }]
+}
+```
+
+`browser create`:
+
+```json
+{
+  "ok": true,
+  "instance": {
+    "name": "string",
+    "browser": "chrome|edge|chromium|brave",
+    "userDataDir": "string",
+    "createdAt": "string",
+    "remoteDebuggingPort": "number|undefined"
+  }
+}
+```
+
+`browser connect`:
+
+```json
+{
+  "ok": true,
+  "type": "chrome|edge|chromium|brave",
+  "executablePath": "string",
+  "userDataDir": "string",
+  "remoteDebuggingPort": "number",
+  "wsUrl": "string",
+  "pid": "number|null"
+}
+```
+
+`browser remove`:
+
+```json
+{
+  "ok": true,
+  "removedInstance": {
+    "name": "string",
+    "browser": "chrome|edge|chromium|brave",
+    "userDataDir": "string",
+    "createdAt": "string",
+    "remoteDebuggingPort": "number|undefined"
+  },
+  "removedDir": true,
+  "closedPids": ["number"]
+}
+```
+
+### Session and account commands
+
+`status`:
+
+```json
+{
+  "ok": true,
+  "instance": {
+    "scope": "default|custom",
+    "name": "string",
+    "browser": "chrome|edge|chromium|brave",
+    "source": "argument|last-connect|single-instance",
+    "status": "running|stopped|missing|stale-lock",
+    "exists": true,
+    "inUse": false,
+    "pid": "number|null",
+    "remotePort": "number|null",
+    "userDataDir": "string",
+    "createdAt": "string|null",
+    "lastConnect": false
+  },
+  "rednote": {
+    "loginStatus": "logged-in|logged-out|unknown",
+    "lastLoginAt": "string|null"
+  }
+}
+```
+
+`check-login`:
+
+```json
+{
+  "ok": true,
+  "rednote": {
+    "loginStatus": "logged-in|logged-out|unknown",
+    "lastLoginAt": "string|null",
+    "needLogin": false,
+    "checkedAt": "string"
+  }
+}
+```
+
+`login`:
+
+```json
+{
+  "ok": true,
+  "rednote": {
+    "loginClicked": true,
+    "pageUrl": "string",
+    "waitingForPhoneLogin": true,
+    "message": "string"
+  }
+}
+```
+
+### Feed and profile commands
+
+`home --format json`:
+
+```json
+{
+  "ok": true,
+  "home": {
+    "pageUrl": "string",
+    "fetchedAt": "string",
+    "total": "number",
+    "posts": ["RednotePost"],
+    "savedPath": "string|undefined"
+  }
+}
+```
+
+`search --format json`:
+
+```json
+{
+  "ok": true,
+  "search": {
+    "keyword": "string",
+    "pageUrl": "string",
+    "fetchedAt": "string",
+    "total": "number",
+    "posts": ["RednotePost"],
+    "savedPath": "string|undefined"
+  }
+}
+```
+
+`get-feed-detail --format json`:
+
+```json
+{
+  "ok": true,
+  "detail": {
+    "fetchedAt": "string",
+    "total": "number",
+    "items": [{
+      "url": "string",
+      "note": {
+        "noteId": "string|null",
+        "title": "string|null",
+        "desc": "string|null",
+        "type": "string|null",
+        "interactInfo": {
+          "liked": "boolean|null",
+          "likedCount": "string|null",
+          "commentCount": "string|null",
+          "collected": "boolean|null",
+          "collectedCount": "string|null",
+          "shareCount": "string|null",
+          "followed": "boolean|null"
+        },
+        "tagList": [{ "name": "string|null" }],
+        "imageList": [{ "urlDefault": "string|null", "urlPre": "string|null", "width": "number|null", "height": "number|null" }],
+        "video": { "url": "string|null", "raw": "unknown" } | null,
+        "raw": "unknown"
+      },
+      "comments": [{
+        "id": "string|null",
+        "content": "string|null",
+        "userId": "string|null",
+        "nickname": "string|null",
+        "likedCount": "string|null",
+        "subCommentCount": "number|null",
+        "raw": "unknown"
+      }]
+    }]
+  }
+}
+```
+
+`get-profile --format json`:
+
+```json
+{
+  "ok": true,
+  "profile": {
+    "userId": "string",
+    "url": "string",
+    "fetchedAt": "string",
+    "user": {
+      "userId": "string|null",
+      "nickname": "string|null",
+      "desc": "string|null",
+      "avatar": "string|null",
+      "ipLocation": "string|null",
+      "gender": "string|null",
+      "follows": "string|number|null",
+      "fans": "string|number|null",
+      "interaction": "string|number|null",
+      "tags": ["string"],
+      "raw": "unknown"
+    },
+    "notes": ["RednotePost"],
+    "raw": {
+      "userPageData": "unknown",
+      "notes": "unknown"
+    }
+  }
+}
+```
+
+### Action commands
+
+`publish`:
+
+```json
+{
+  "ok": true,
+  "message": "string"
+}
+```
+
+`comment`:
+
+```json
+{
+  "ok": true,
+  "comment": {
+    "url": "string",
+    "content": "string",
+    "commentedAt": "string"
+  }
+}
+```
+
+`interact`:
+
+```json
+{
+  "ok": true,
+  "message": "string"
+}
+```
 
 ## Storage
 

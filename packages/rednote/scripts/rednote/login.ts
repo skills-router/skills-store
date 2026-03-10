@@ -104,7 +104,7 @@ export async function runLoginCommand(values: LoginCliValues = {}) {
     const result = await openRednoteLogin(target, session);
     printJson(result);
   } finally {
-    disconnectRednoteSession(session);
+    await disconnectRednoteSession(session);
   }
 }
 

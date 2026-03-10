@@ -33,10 +33,13 @@ export type RednoteDetailNote = {
   desc: string | null;
   type: string | null;
   interactInfo: {
+    liked: boolean | null;
     likedCount: string | null;
     commentCount: string | null;
     collectedCount: string | null;
     shareCount: string | null;
+    collected: boolean | null;
+    followed: boolean | null;
   };
   tagList: Array<{
     name: string | null;
@@ -149,10 +152,13 @@ function normalizeDetailNote(note: any): RednoteDetailNote {
     desc: note?.desc ?? null,
     type: note?.type ?? null,
     interactInfo: {
+      liked: note?.interactInfo?.liked ?? null,
       likedCount: note?.interactInfo?.likedCount ?? null,
       commentCount: note?.interactInfo?.commentCount ?? null,
+      collected: note?.interactInfo?.collected ?? null,
       collectedCount: note?.interactInfo?.collectedCount ?? null,
       shareCount: note?.interactInfo?.shareCount ?? null,
+      followed: note?.interactInfo?.followed ?? null,
     },
     tagList: Array.isArray(note?.tagList)
       ? note.tagList.map((tag: any) => ({ name: tag?.name ?? null }))
@@ -187,46 +193,64 @@ function normalizeComments(comments: any[]): RednoteComment[] {
   }));
 }
 
+function formatDetailField(value: string | number | boolean | null | undefined) {
+  return value ?? '';
+}
+
 function renderDetailMarkdown(items: RednoteFeedDetailItem[]) {
   if (items.length === 0) {
     return '没有获取到帖子详情。\n';
   }
 
   return `${items.map((item) => {
-    const lines: string[] = ['<note>'];
-    lines.push(`### Url: ${item.url}`);
-    lines.push(`### 标题:${item.note.title ?? ''}`);
-    lines.push(`### 内容\n${item.note.desc ?? ''}`);
+    const lines: string[] = [];
 
-    if (item.note.interactInfo.likedCount) {
-      lines.push(`### 点赞: ${item.note.interactInfo.likedCount}`);
-    }
-    if (item.note.interactInfo.commentCount) {
-      lines.push(`### 评论: ${item.note.interactInfo.commentCount}`);
-    }
-    if (item.note.interactInfo.collectedCount) {
-      lines.push(`### 收藏: ${item.note.interactInfo.collectedCount}`);
-    }
-    if (item.note.interactInfo.shareCount) {
-      lines.push(`### 分享: ${item.note.interactInfo.shareCount}`);
-    }
-    if (item.note.tagList.length > 0) {
-      lines.push(`### 标签: ${item.note.tagList.map((tag) => tag.name ? `#${tag.name}` : '').filter(Boolean).join(' ')}`);
-    }
-    if (item.note.imageList.length > 0) {
-      lines.push(`### 图片\n${item.note.imageList.map((image) => image.urlDefault ? `![](${image.urlDefault})` : '').filter(Boolean).join('\n')}`);
-    }
-    if (item.note.video?.url) {
-      lines.push(`### 视频\n[](${item.note.video.url})`);
-    }
-    if (item.comments.length > 0) {
-      lines.push('### 评论:');
-      for (const comment of item.comments) {
-        lines.push(`- ${comment.content ?? ''}`);
+    lines.push('## Note');
+    lines.push('');
+    lines.push(`- Url: ${item.url}`);
+    lines.push(`- Title: ${formatDetailField(item.note.title)}`);
+    lines.push(`- Type: ${formatDetailField(item.note.type)}`);
+    lines.push(`- Liked: ${formatDetailField(item.note.interactInfo.liked)}`);
+    lines.push(`- Collected: ${formatDetailField(item.note.interactInfo.collected)}`);
+    lines.push(`- LikedCount: ${formatDetailField(item.note.interactInfo.likedCount)}`);
+    lines.push(`- CommentCount: ${formatDetailField(item.note.interactInfo.commentCount)}`);
+    lines.push(`- CollectedCount: ${formatDetailField(item.note.interactInfo.collectedCount)}`);
+    lines.push(`- ShareCount: ${formatDetailField(item.note.interactInfo.shareCount)}`);
+    lines.push(`- Tags: ${item.note.tagList.map((tag) => tag.name ? `#${tag.name}` : '').filter(Boolean).join(' ')}`);
+    lines.push('');
+    lines.push('## Content');
+    lines.push('');
+    lines.push(item.note.desc ?? '');
+
+    if (item.note.imageList.length > 0 || item.note.video?.url) {
+      lines.push('');
+      lines.push('## Media');
+      lines.push('');
+
+      item.note.imageList.forEach((image, index) => {
+        if (image.urlDefault) {
+          lines.push(`- Image${index + 1}: ${image.urlDefault}`);
+        }
+      });
+
+      if (item.note.video?.url) {
+        lines.push(`- Video: ${item.note.video.url}`);
       }
     }
 
-    lines.push('</note>');
+    lines.push('');
+    lines.push('## Comments');
+    lines.push('');
+
+    if (item.comments.length === 0) {
+      lines.push('- Comments not found');
+    } else {
+      item.comments.forEach((comment) => {
+        const prefix = comment.nickname ? `${comment.nickname}: ` : '';
+        lines.push(`- ${prefix}${comment.content ?? ''}`);
+      });
+    }
+
     return lines.join('\n');
   }).join('\n\n---\n\n')}\n`;
 }
@@ -339,7 +363,7 @@ export async function runGetFeedDetailCommand(values: FeedDetailCliValues = { ur
     const result = await getFeedDetails(session, values.urls);
     writeFeedDetailOutput(result, values.format);
   } finally {
-    disconnectRednoteSession(session);
+    await disconnectRednoteSession(session);
   }
 }
 

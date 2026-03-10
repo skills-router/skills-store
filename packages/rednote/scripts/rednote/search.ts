@@ -298,7 +298,7 @@ export async function runSearchCommand(values: SearchCliValues = { format: 'md',
     const result = await searchRednotePosts(session, keyword);
     writeSearchOutput(result, values);
   } finally {
-    disconnectRednoteSession(session);
+    await disconnectRednoteSession(session);
   }
 }
 
