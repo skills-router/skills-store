@@ -23,6 +23,8 @@ Only mention `npx -y @skills-store/rednote ...` if the user explicitly asks for 
 
 Only show local repo commands if the user is explicitly developing the CLI.
 
+Use `rednote --version` when the user wants to confirm the installed `@skills-store/rednote` version before troubleshooting or upgrading.
+
 For Xiaohongshu operation commands, default to omitting `--instance`. Assume the CLI uses the current or default connected instance unless the user explicitly asks to target a named instance.
 If `browser list` shows no custom instance yet, tell the user to create one first with `rednote browser create --name <NAME> ...`. A name is required for creation; prefer a short, stable name such as `seller-main`.
 
@@ -162,6 +164,14 @@ Use `browser list` to inspect default browsers, custom instances, stale locks, a
 Use `browser create` to create a reusable named browser profile for later account-scoped commands. Creation requires `--name`; if the user has no custom instance yet, tell them to pick a name first and then create it, for example `rednote browser create --name seller-main --browser chrome --port 9222`.
 
 For exact `browser` subcommands, flags, and examples, open `references/browser.md`.
+
+### `version`
+
+```bash
+rednote --version
+```
+
+Use `--version` when the user wants to check the installed `@skills-store/rednote` version.
 
 ### `env`
 
