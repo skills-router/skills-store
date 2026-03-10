@@ -135,6 +135,21 @@ function validateFeedDetailUrl(url: string) {
   }
 }
 
+function normalizeFeedDetailUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has('xsec_source')) {
+      parsed.searchParams.set('xsec_source', 'pc_feed');
+    }
+    return parsed.toString();
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(`url is not valid: ${url}`);
+    }
+    throw error;
+  }
+}
+
 async function getOrCreateXiaohongshuPage(session: RednoteSession) {
   return session.page;
 }
@@ -323,8 +338,9 @@ export async function getFeedDetails(session: RednoteSession, urls: string[]): P
   const page = await getOrCreateXiaohongshuPage(session);
   const items: RednoteFeedDetailItem[] = [];
   for (const url of urls) {
-    validateFeedDetailUrl(url);
-    items.push(await captureFeedDetail(page, url));
+    const normalizedUrl = normalizeFeedDetailUrl(url);
+    validateFeedDetailUrl(normalizedUrl);
+    items.push(await captureFeedDetail(page, normalizedUrl));
   }
 
   return {

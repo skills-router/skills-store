@@ -20,7 +20,7 @@ Create a reusable named browser instance:
 rednote browser create --name seller-main --browser chrome --port 9222
 ```
 
-Use `browser create` to create a dedicated profile for later `connect`, `login`, `publish`, `search`, `get-feed-detail`, `comment`, or `interact` commands.
+Use `browser create` to create a dedicated profile for later `connect`, `login`, `publish`, `search`, `get-feed-detail`, or `interact` commands.
 
 ## `browser connect`
 
@@ -42,7 +42,7 @@ Force reconnect when the profile is blocked by a stale lock:
 rednote browser connect --instance seller-main --force
 ```
 
-Use `browser connect` before `login`, `check-login`, `status`, `home`, `search`, `get-feed-detail`, `get-profile`, `publish`, `comment`, or `interact`.
+Use `browser connect` before `login`, `check-login`, `status`, `home`, `search`, `get-feed-detail`, `get-profile`, `publish`, or `interact`.
 
 ## `browser remove`
 

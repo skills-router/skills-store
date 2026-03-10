@@ -24,8 +24,7 @@ Commands:
   check-login [--instance NAME]
   login [--instance NAME]
   publish [--instance NAME]
-  comment [--instance NAME] --url URL --content TEXT
-  interact [--instance NAME] --url URL --action like|collect|comment [--content TEXT]
+  interact [--instance NAME] --url URL [--like] [--collect] [--comment TEXT]
   home [--instance NAME] [--format md|json] [--save [PATH]]
   search [--instance NAME] --keyword TEXT [--format md|json] [--save [PATH]]
   get-feed-detail [--instance NAME] --url URL [--format md|json]
@@ -37,8 +36,7 @@ Examples:
   npx -y @skills-store/rednote browser connect --instance seller-main
   npx -y @skills-store/rednote env
   npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --content 描述
-  npx -y @skills-store/rednote comment --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --content "写得真好"
-  npx -y @skills-store/rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action like
+  npx -y @skills-store/rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "写得真好"
   npx -y @skills-store/rednote search --instance seller-main --keyword 护肤
 `);
 }

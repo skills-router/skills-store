@@ -10,7 +10,6 @@ import {
   ensureRednoteLoggedIn,
   type RednoteSession,
 } from './checkLogin.ts';
-import { commentOnFeed } from './comment.ts';
 import { getFeedDetails } from './getFeedDetail.ts';
 
 export type InteractAction = 'like' | 'collect' | 'comment';
@@ -18,8 +17,9 @@ export type InteractAction = 'like' | 'collect' | 'comment';
 export type InteractCliValues = {
   instance?: string;
   url?: string;
-  action?: string;
-  content?: string;
+  like?: boolean;
+  collect?: boolean;
+  comment?: string;
   help?: boolean;
 };
 
@@ -31,20 +31,24 @@ export type InteractResult = {
 const INTERACT_CONTAINER_SELECTOR = '.interact-container';
 const LIKE_WRAPPER_SELECTOR = `${INTERACT_CONTAINER_SELECTOR} .like-wrapper`;
 const COLLECT_WRAPPER_SELECTOR = `${INTERACT_CONTAINER_SELECTOR} .collect-wrapper, ${INTERACT_CONTAINER_SELECTOR} #note-page-collect-board-guide`;
+const COMMENT_INPUT_SELECTOR = '#content-textarea[contenteditable="true"]';
+const COMMENT_SEND_BUTTON_SELECTOR = 'button.btn.submit';
+const COMMENT_SEND_BUTTON_TEXT = '发送';
 
 function printInteractHelp() {
   process.stdout.write(`rednote interact
 
 Usage:
-  npx -y @skills-store/rednote interact [--instance NAME] --url URL --action like|collect|comment [--content TEXT]
-  node --experimental-strip-types ./scripts/rednote/interact.ts --instance NAME --url URL --action like|collect|comment [--content TEXT]
-  bun ./scripts/rednote/interact.ts --instance NAME --url URL --action like|collect|comment [--content TEXT]
+  npx -y @skills-store/rednote interact [--instance NAME] --url URL [--like] [--collect] [--comment TEXT]
+  node --experimental-strip-types ./scripts/rednote/interact.ts --instance NAME --url URL [--like] [--collect] [--comment TEXT]
+  bun ./scripts/rednote/interact.ts --instance NAME --url URL [--like] [--collect] [--comment TEXT]
 
 Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
   --url URL         Required. Xiaohongshu explore url
-  --action ACTION   Required. like | collect | comment
-  --content TEXT    Required only when --action comment
+  --like            Optional. Perform like
+  --collect         Optional. Perform collect
+  --comment TEXT    Optional. Post comment content
   -h, --help        Show this help
 `);
 }
@@ -57,8 +61,9 @@ export function parseInteractCliArgs(argv: string[]): InteractCliValues {
     options: {
       instance: { type: 'string' },
       url: { type: 'string' },
-      action: { type: 'string' },
-      content: { type: 'string' },
+      like: { type: 'boolean' },
+      collect: { type: 'boolean' },
+      comment: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -70,8 +75,9 @@ export function parseInteractCliArgs(argv: string[]): InteractCliValues {
   return {
     instance: values.instance,
     url: values.url,
-    action: values.action,
-    content: values.content,
+    like: values.like,
+    collect: values.collect,
+    comment: values.comment,
     help: values.help,
   };
 }
@@ -102,21 +108,30 @@ function validateFeedDetailUrl(url: string) {
   }
 }
 
-function resolveInteractAction(action: string | undefined): InteractAction {
-  const normalized = action?.trim().toLowerCase();
-  if (!normalized) {
-    throw new Error('Missing required option: --action');
+function resolveInteractActions(values: InteractCliValues): { actions: InteractAction[]; commentContent?: string } {
+  const actions: InteractAction[] = [];
+
+  if (values.like) {
+    actions.push('like');
   }
 
-  if (normalized === 'like' || normalized === 'collect' || normalized === 'comment') {
-    return normalized;
+  if (values.collect) {
+    actions.push('collect');
   }
 
-  if (normalized === 'favorite') {
-    return 'collect';
+  const commentContent = values.comment?.trim();
+  if (commentContent) {
+    actions.push('comment');
   }
 
-  throw new Error(`Invalid --action value: ${String(action)}. Expected like | collect | comment`);
+  if (actions.length === 0) {
+    throw new Error('At least one interact option is required: --like, --collect, or --comment');
+  }
+
+  return {
+    actions,
+    commentContent,
+  };
 }
 
 async function getOrCreateXiaohongshuPage(session: RednoteSession) {
@@ -148,6 +163,77 @@ async function requireVisibleLocator(locator: Locator, errorMessage: string, tim
   }
 
   return visibleLocator;
+}
+
+async function typeCommentContent(page: Page, content: string) {
+  const commentInput = page.locator(COMMENT_INPUT_SELECTOR);
+  const visibleCommentInput = await requireVisibleLocator(
+    commentInput,
+    '未找到评论输入框，请确认帖子详情页已正确加载。',
+    15_000,
+  );
+
+  await visibleCommentInput.scrollIntoViewIfNeeded();
+  await visibleCommentInput.click({ force: true });
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A').catch(() => {});
+  await page.keyboard.press('Backspace').catch(() => {});
+  await page.keyboard.insertText(content);
+
+  await page.waitForFunction(
+    ({ selector, expectedContent }) => {
+      const element = document.querySelector(selector);
+      if (!(element instanceof HTMLElement)) {
+        return false;
+      }
+
+      return element.innerText.trim() === expectedContent;
+    },
+    { selector: COMMENT_INPUT_SELECTOR, expectedContent: content },
+    { timeout: 5_000 },
+  );
+}
+
+async function clickSendComment(page: Page) {
+  const sendButton = page.locator(COMMENT_SEND_BUTTON_SELECTOR).filter({ hasText: COMMENT_SEND_BUTTON_TEXT });
+  const visibleSendButton = await requireVisibleLocator(
+    sendButton,
+    '未找到“发送”按钮，请确认评论工具栏已正确加载。',
+    15_000,
+  );
+
+  await page.waitForFunction(
+    ({ selector, text }) => {
+      const buttons = [...document.querySelectorAll(selector)];
+      const target = buttons.find((candidate) => candidate.textContent?.includes(text));
+      return target instanceof HTMLButtonElement && !target.disabled;
+    },
+    { selector: COMMENT_SEND_BUTTON_SELECTOR, text: COMMENT_SEND_BUTTON_TEXT },
+    { timeout: 5_000 },
+  );
+
+  await visibleSendButton.click();
+
+  await page.waitForFunction(
+    ({ inputSelector, buttonSelector, text }) => {
+      const input = document.querySelector(inputSelector);
+      const buttons = [...document.querySelectorAll(buttonSelector)];
+      const button = buttons.find((candidate) => candidate.textContent?.includes(text));
+      const inputCleared = input instanceof HTMLElement ? input.innerText.trim().length === 0 : false;
+      const buttonDisabled = button instanceof HTMLButtonElement ? button.disabled : false;
+      return inputCleared || buttonDisabled;
+    },
+    {
+      inputSelector: COMMENT_INPUT_SELECTOR,
+      buttonSelector: COMMENT_SEND_BUTTON_SELECTOR,
+      text: COMMENT_SEND_BUTTON_TEXT,
+    },
+    { timeout: 10_000 },
+  );
+}
+
+async function commentOnCurrentFeedPage(page: Page, content: string) {
+  await typeCommentContent(page, content);
+  await clickSendComment(page);
 }
 
 async function waitForInteractContainer(page: Page) {
@@ -214,18 +300,9 @@ async function ensureActionApplied(page: Page, action: 'like' | 'collect', alrea
 export async function interactWithFeed(
   session: RednoteSession,
   url: string,
-  action: InteractAction,
-  content?: string,
+  actions: InteractAction[],
+  commentContent?: string,
 ): Promise<InteractResult> {
-  if (action === 'comment') {
-    const normalizedContent = ensureNonEmpty(content, '--content');
-    const commentResult = await commentOnFeed(session, url, normalizedContent);
-    return {
-      ok: true,
-      message: `Comment posted: ${url}`,
-    };
-  }
-
   validateFeedDetailUrl(url);
   const detailResult = await getFeedDetails(session, [url]);
   const detailItem = detailResult.detail.items[0];
@@ -233,21 +310,38 @@ export async function interactWithFeed(
     throw new Error(`Failed to load feed detail: ${url}`);
   }
 
-  const alreadyActive = action === 'like'
-    ? detailItem.note.interactInfo.liked === true
-    : detailItem.note.interactInfo.collected === true;
-
   const page = await getOrCreateXiaohongshuPage(session);
   await waitForInteractContainer(page);
-  await ensureActionApplied(page, action, alreadyActive);
 
-  const message = alreadyActive
-    ? `${action === 'like' ? 'Like' : 'Collect'} already active: ${url}`
-    : `${action === 'like' ? 'Like' : 'Collect'} completed: ${url}`;
+  let liked = detailItem.note.interactInfo.liked === true;
+  let collected = detailItem.note.interactInfo.collected === true;
+  const messages: string[] = [];
+
+  for (const action of actions) {
+    if (action === 'like') {
+      const alreadyActive = liked;
+      await ensureActionApplied(page, 'like', alreadyActive);
+      liked = true;
+      messages.push(alreadyActive ? 'Like already active' : 'Like completed');
+      continue;
+    }
+
+    if (action === 'collect') {
+      const alreadyActive = collected;
+      await ensureActionApplied(page, 'collect', alreadyActive);
+      collected = true;
+      messages.push(alreadyActive ? 'Collect already active' : 'Collect completed');
+      continue;
+    }
+
+    const normalizedContent = ensureNonEmpty(commentContent, '--comment');
+    await commentOnCurrentFeedPage(page, normalizedContent);
+    messages.push('Comment posted');
+  }
 
   return {
     ok: true,
-    message,
+    message: `${messages.join('; ')}: ${url}`,
   };
 }
 
@@ -258,13 +352,13 @@ export async function runInteractCommand(values: InteractCliValues = {}) {
   }
 
   const url = ensureNonEmpty(values.url, '--url');
-  const action = resolveInteractAction(values.action);
+  const { actions, commentContent } = resolveInteractActions(values);
   const target = resolveStatusTarget(values.instance);
   const session = await createRednoteSession(target);
 
   try {
-    await ensureRednoteLoggedIn(target, `performing ${action} interact`, session);
-    const result = await interactWithFeed(session, url, action, values.content);
+    await ensureRednoteLoggedIn(target, `performing ${actions.join(', ')} interact`, session);
+    const result = await interactWithFeed(session, url, actions, commentContent);
     printJson(result);
   } finally {
     await disconnectRednoteSession(session);

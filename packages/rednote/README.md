@@ -1,6 +1,6 @@
 # @skills-store/rednote
 
-A Xiaohongshu (RED) automation CLI for browser session management, login, search, feed detail lookup, profile lookup, and note interactions such as like, collect, and comment.
+A Xiaohongshu (RED) automation CLI for browser session management, login, search, feed detail lookup, profile lookup, and note interactions such as like, collect, and commenting through `interact`.
 
 ## Install
 
@@ -27,7 +27,7 @@ For most tasks, run commands in this order:
 3. browser connect
 4. login or check-login
 5. status
-6. home, search, get-feed-detail, get-profile, comment, or interact
+6. home, search, get-feed-detail, get-profile, or interact
 ```
 
 ## Quick start
@@ -39,8 +39,7 @@ rednote browser connect --instance seller-main
 rednote login --instance seller-main
 rednote status --instance seller-main
 rednote search --instance seller-main --keyword 护肤
-rednote comment --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --content "写得真好"
-rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action like
+rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "写得真好"
 ```
 
 ## Commands
@@ -123,23 +122,15 @@ rednote get-profile --instance seller-main --id USER_ID
 
 Use `get-profile` when you want author or account profile information.
 
-### `comment`
-
-```bash
-rednote comment --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --content "写得真好"
-```
-
-Use `comment` when you want to open a note detail page, type into the comment box, and click the send button.
 
 ### `interact`
 
 ```bash
-rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action like
-rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action collect
-rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --action comment --content "写得真好"
+rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect
+rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "写得真好"
 ```
 
-Use `interact` when you want a single entrypoint for like, collect, or comment operations on a note.
+Use `interact` when you want the single entrypoint for note operations such as like, collect, and comment in one command. Use `--comment TEXT` for replies; there is no standalone `comment` command.
 
 ## Important flags
 
@@ -150,8 +141,8 @@ Use `interact` when you want a single entrypoint for like, collect, or comment o
 - `--keyword` is required for `search`.
 - `--url` is required for `get-feed-detail`.
 - `--id` is required for `get-profile`.
-- `--url` and `--content` are required for `comment`.
-- `--url` and `--action` are required for `interact`; `--content` is additionally required when `--action comment`.
+- `--url` is required for `interact`; at least one of `--like`, `--collect`, or `--comment TEXT` must be provided.
+- replies are sent with `interact --comment TEXT`.
 
 ## JSON success shapes
 
@@ -462,19 +453,6 @@ Use these shapes as the success model when a command returns JSON.
 {
   "ok": true,
   "message": "string"
-}
-```
-
-`comment`:
-
-```json
-{
-  "ok": true,
-  "comment": {
-    "url": "string",
-    "content": "string",
-    "commentedAt": "string"
-  }
 }
 ```
 
