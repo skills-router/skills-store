@@ -50,9 +50,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/skills-router/skills-store.git",
-    "directory": "packages/rednote"
+    "directory": "packages/rednote-cli"
   },
-  "homepage": "https://github.com/skills-router/skills-store/tree/main/packages/rednote",
+  "homepage": "https://github.com/skills-router/skills-store/tree/main/packages/rednote-cli",
   "bugs": {
     "url": "https://github.com/skills-router/skills-store/issues"
   },

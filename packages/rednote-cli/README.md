@@ -333,6 +333,7 @@ Use these shapes as the success model when a command returns JSON.
     "loginClicked": true,
     "pageUrl": "string",
     "waitingForPhoneLogin": true,
+    "qrCodePath": "string|null",
     "message": "string"
   }
 }
@@ -490,7 +491,7 @@ If a command fails, check these in order:
 
 ## Repository
 
-- Homepage: https://github.com/skills-router/skills-store/tree/main/packages/rednote
+- Homepage: https://github.com/skills-router/skills-store/tree/main/packages/rednote-cli
 - Issues: https://github.com/skills-router/skills-store/issues
 
 ## License

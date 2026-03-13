@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - "packages/rednote/**"
+      - "packages/rednote-cli/**"
       - ".github/workflows/rednote-publish.yml"
   workflow_dispatch:
 
@@ -22,7 +22,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: packages/rednote
+        working-directory: packages/rednote-cli
 
     steps:
       - name: Check out repository
@@ -36,7 +36,7 @@ jobs:
           node-version: 22.14.0
           registry-url: https://registry.npmjs.org
           cache: npm
-          cache-dependency-path: packages/rednote/package-lock.json
+          cache-dependency-path: packages/rednote-cli/package-lock.json
 
       - name: Upgrade npm for trusted publishing
         run: |

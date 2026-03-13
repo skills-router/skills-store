@@ -1,6 +1,6 @@
 ---
 name: rednote
-description: Use when the user needs to publish, search, inspect, or otherwise operate Xiaohongshu (RedNote) from the terminal with the `@skills-store/rednote` CLI.
+description: Use when the user needs to publish, search, inspect, log into, or otherwise operate Xiaohongshu (RedNote) from the terminal with the `@skills-store/rednote` CLI. When handling `rednote login`, expect the command to return a local QR code image path on success and present that QR code image to the user.
 ---
 
 # Rednote Commands
@@ -205,6 +205,7 @@ rednote login
 ```
 
 Use `login` after `browser connect` if the account is not authenticated yet.
+If `login` succeeds and returns `rednote.qrCodePath`, show the QR code image to the user instead of only repeating the path so they can scan it immediately.
 
 ### `home`
 
