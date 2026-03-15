@@ -1,5 +1,6 @@
 node_modules/
-bin/
+bin/*
+!bin/rednote.js
 .vscode/
 output/
 instances/*/
