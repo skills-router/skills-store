@@ -4,17 +4,22 @@ import * as cheerio from 'cheerio';
 import { parseArgs } from 'node:util';
 import vm from 'node:vm';
 import type { Page, Response } from 'playwright-core';
-import { printJson, runCli } from '../utils/browser-cli.ts';
+import { runCli } from '../utils/browser-cli.ts';
 import { resolveStatusTarget } from './status.ts';
 import { createRednoteSession, disconnectRednoteSession, ensureRednoteLoggedIn, type RednoteSession } from './checkLogin.ts';
 import type { RednotePost } from './post-types.ts';
+import { ensureJsonSavePath, renderJsonSaveSummary, renderPostsMarkdown, resolveJsonSavePath, writeJsonFile } from './output-format.ts';
 
 export type ProfileFormat = 'json' | 'md';
+
+export type ProfileMode = 'profile' | 'notes';
 
 export type GetProfileCliValues = {
   instance?: string;
   id?: string;
   format: ProfileFormat;
+  mode: ProfileMode;
+  savePath?: string;
   help?: boolean;
 };
 
@@ -29,7 +34,7 @@ export type RednoteProfileUser = {
   fans: string | number | null;
   interaction: string | number | null;
   tags: string[];
-  raw: unknown;
+  // raw: unknown;
 };
 
 export type RednoteProfileResult = {
@@ -40,10 +45,10 @@ export type RednoteProfileResult = {
     fetchedAt: string;
     user: RednoteProfileUser;
     notes: RednotePost[];
-    raw: {
-      userPageData: unknown;
-      notes: unknown;
-    };
+    // raw: {
+    //   userPageData: unknown;
+    //   notes: unknown;
+    // };
   };
 };
 
@@ -62,14 +67,16 @@ function printGetProfileHelp() {
   process.stdout.write(`rednote get-profile
 
 Usage:
-  npx -y @skills-store/rednote get-profile [--instance NAME] --id USER_ID [--format md|json]
-  node --experimental-strip-types ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--format md|json]
-  bun ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--format md|json]
+  npx -y @skills-store/rednote get-profile [--instance NAME] --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
+  node --experimental-strip-types ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
+  bun ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
 
 Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
   --id USER_ID      Required. Xiaohongshu profile user id
+  --mode MODE       Optional. profile | notes. Default: profile
   --format FORMAT   Output format: md | json. Default: md
+  --save PATH       Required when --format json is used. Saves only the selected mode data as JSON
   -h, --help        Show this help
 `);
 }
@@ -83,6 +90,8 @@ export function parseGetProfileCliArgs(argv: string[]): GetProfileCliValues {
       instance: { type: 'string' },
       id: { type: 'string' },
       format: { type: 'string' },
+      mode: { type: 'string' },
+      save: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -96,10 +105,17 @@ export function parseGetProfileCliArgs(argv: string[]): GetProfileCliValues {
     throw new Error(`Invalid --format value: ${String(format)}`);
   }
 
+  const mode = values.mode ?? 'profile';
+  if (mode !== 'profile' && mode !== 'notes') {
+    throw new Error(`Invalid --mode value: ${String(values.mode)}`);
+  }
+
   return {
     instance: values.instance,
     id: values.id,
     format,
+    mode,
+    savePath: values.save,
     help: values.help,
   };
 }
@@ -161,7 +177,6 @@ function normalizeProfileUser(userPageData: any): RednoteProfileUser {
     fans: fans,
     interaction: interaction,
     tags,
-    raw: userPageData,
   };
 }
 
@@ -272,8 +287,8 @@ function formatProfileField(value: string | number | null | undefined) {
   return value ?? '';
 }
 
-function renderProfileMarkdown(result: RednoteProfileResult) {
-  const { user, notes, url, userId } = result.profile;
+function renderProfileUserMarkdown(result: RednoteProfileResult) {
+  const { user, url, userId } = result.profile;
   const lines: string[] = [];
 
   lines.push('## UserInfo');
@@ -287,24 +302,20 @@ function renderProfileMarkdown(result: RednoteProfileResult) {
   lines.push(`- Fans: ${formatProfileField(user.fans)}`);
   lines.push(`- Interactions: ${formatProfileField(user.interaction)}`);
   lines.push(`- Tags: ${user.tags.length > 0 ? user.tags.map((tag) => `#${tag}`).join(' ') : ''}`);
-  lines.push('');
-  lines.push('## Notes');
-  lines.push('');
-
-  if (notes.length === 0) {
-    lines.push('- Notes not found or the profile is private');
-  } else {
-    notes.forEach((note, index) => {
-      lines.push(`- Title: ${note.noteCard.displayTitle ?? ''}`);
-      lines.push(`  Url: ${note.url}`);
-      lines.push(`  Interaction: ${note.noteCard.interactInfo.likedCount ?? ''}`);
-      if (index < notes.length - 1) {
-        lines.push('');
-      }
-    });
-  }
 
   return `${lines.join('\n')}\n`;
+}
+
+function selectProfileOutput(result: RednoteProfileResult, mode: ProfileMode) {
+  return mode === 'notes' ? result.profile.notes : result.profile.user;
+}
+
+function renderProfileMarkdown(result: RednoteProfileResult, mode: ProfileMode) {
+  if (mode === 'notes') {
+    return renderPostsMarkdown(result.profile.notes);
+  }
+
+  return renderProfileUserMarkdown(result);
 }
 async function captureProfile(page: Page, targetUrl: string) {
   let userPageData: any = null;
@@ -374,27 +385,34 @@ export async function getProfile(session: RednoteSession, url: string, userId: s
       userId,
       url,
       fetchedAt: new Date().toISOString(),
-      user: normalizeProfileUser(captured.userPageData),
+      user: normalizeProfileUser({...captured.userPageData, userId }),
       notes: normalizeProfileNotes(captured.notes),
-      raw: captured,
+      // raw: captured,
     },
   };
 }
 
-function writeProfileOutput(result: RednoteProfileResult, format: ProfileFormat) {
-  if (format === 'json') {
-    printJson(result);
+function writeProfileOutput(result: RednoteProfileResult, values: GetProfileCliValues) {
+  const output = selectProfileOutput(result, values.mode);
+
+  if (values.format === 'json') {
+    const savedPath = resolveJsonSavePath(values.savePath);
+    writeJsonFile(output, savedPath);
+    process.stdout.write(renderJsonSaveSummary(savedPath, output));
     return;
   }
 
-  process.stdout.write(renderProfileMarkdown(result));
+  process.stdout.write(renderProfileMarkdown(result, values.mode));
 }
 
-export async function runGetProfileCommand(values: GetProfileCliValues = { format: 'md' }) {
+export async function runGetProfileCommand(values: GetProfileCliValues = { format: 'md', mode: 'profile' }) {
   if (values.help) {
     printGetProfileHelp();
     return;
   }
+
+  ensureJsonSavePath(values.format, values.savePath);
+
   if (!values.id) {
     throw new Error('Missing required option: --id');
   }
@@ -406,7 +424,7 @@ export async function runGetProfileCommand(values: GetProfileCliValues = { forma
   try {
     await ensureRednoteLoggedIn(target, 'fetching profile', session);
     const result = await getProfile(session, buildProfileUrl(normalizedUserId), normalizedUserId);
-    writeProfileOutput(result, values.format);
+    writeProfileOutput(result, values);
   } finally {
     await disconnectRednoteSession(session);
   }

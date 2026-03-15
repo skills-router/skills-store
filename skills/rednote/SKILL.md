@@ -62,7 +62,7 @@ Search by keyword:
 
 ```bash
 rednote search --keyword 护肤
-rednote search --keyword 护肤 --format json --save ./output/search.jsonl
+rednote search --keyword 护肤 --format json --save ./output/search.json
 ```
 
 Use `search` when the user wants candidate notes for a topic instead of the home feed.
@@ -73,10 +73,12 @@ Fetch one note by URL:
 
 ```bash
 rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
-rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --format json
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --format json --save ./output/feed-detail.json
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments --format json --save ./output/feed-detail-with-comments.json
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments 100 --format json --save ./output/feed-detail-100-comments.json
 ```
 
-Use `get-feed-detail` after `home` or `search` when the user wants the title,正文,互动数据,图片/视频, and existing comments before taking an action.
+Use `get-feed-detail` after `home` or `search` when the user wants the title, content, interaction data, and media before taking an action. Add `--comments` only when comment data is needed.
 
 
 ### Interact with one note
@@ -142,7 +144,8 @@ Start from a keyword, then reply on the detail page:
 
 ```bash
 rednote search --keyword 低糖早餐 --format md
-rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --format json
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments --format json --save ./output/feed-detail-with-comments.json
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments 100 --format json --save ./output/feed-detail-100-comments.json
 rednote interact --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comment "这份搭配看起来很实用，食材和步骤都写得很清楚。"
 ```
 
@@ -151,8 +154,9 @@ rednote interact --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" 
 Check the author before engaging:
 
 ```bash
-rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --format json
-rednote get-profile --id USER_ID
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --format json --save ./output/feed-detail.json
+rednote get-profile --id USER_ID --mode profile
+rednote get-profile --id USER_ID --mode notes --format json --save ./output/profile-notes.json
 ```
 
 ## Command reference
@@ -177,7 +181,7 @@ Use `--version` when the user wants to check the installed `@skills-store/rednot
 
 ```bash
 rednote env
-rednote env --format json
+rednote env --format json --save ./output/env.json
 ```
 
 Use `env` when the user is debugging installation or local setup.
@@ -219,7 +223,7 @@ Use `home` when the user wants the current home feed and optionally wants to sav
 
 ```bash
 rednote search --keyword 护肤
-rednote search --keyword 护肤 --format json --save ./output/search.jsonl
+rednote search --keyword 护肤 --format json --save ./output/search.json
 ```
 
 Use `search` when the user wants notes by keyword.
@@ -228,17 +232,32 @@ Use `search` when the user wants notes by keyword.
 
 ```bash
 rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --format json --save ./output/feed-detail.json
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments --format json --save ./output/feed-detail-with-comments.json
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments 100 --format json --save ./output/feed-detail-100-comments.json
 ```
 
 Use `get-feed-detail` when the user already has a note URL and wants structured detail data.
+
+- Without `--comments`, the saved JSON contains only the note item array.
+- With `--comments`, each item may include a `comments` array with the reduced comment fields only, using only the comments already loaded on the page. It does not scroll.
+- With `--comments COUNT`, the CLI scrolls `.note-scroller` until it has collected about `COUNT` comments, reaches the end, or times out.
+- In JSON mode, `--save PATH` is required, and the saved file contains only the note items array instead of the full wrapper object.
 
 ### `get-profile`
 
 ```bash
 rednote get-profile --id USER_ID
+rednote get-profile --id USER_ID --mode profile
+rednote get-profile --id USER_ID --mode notes
+rednote get-profile --id USER_ID --mode notes --format json --save ./output/profile-notes.json
 ```
 
 Use `get-profile` when the user wants author or account profile information.
+
+- `--mode profile` returns only the normalized `profile.user` data. This is the default mode.
+- `--mode notes` returns only the normalized `profile.notes` list.
+- When `--format json` is used, `--save PATH` is required, and the saved JSON contains only the selected mode data instead of the full wrapper object.
 
 ### `interact`
 
@@ -249,166 +268,22 @@ rednote interact --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" 
 
 Use `interact` when the user wants a unified command for like, collect, or comment. Use `--comment TEXT` for replies.
 
-## JSON success shapes
+## JSON save rules
 
-When the user asks for JSON output, use these success shapes as the stable mental model.
+When the user asks for `--format json`, remember these CLI rules:
 
-### Common note item shape
-
-`home`, `search`, and `profile.notes` share the normalized `RednotePost` shape:
-
-```json
-{
-  "id": "string",
-  "modelType": "string",
-  "xsecToken": "string|null",
-  "url": "string",
-  "noteCard": {
-    "type": "string|null",
-    "displayTitle": "string|null",
-    "cover": {
-      "urlDefault": "string|null",
-      "urlPre": "string|null",
-      "url": "string|null",
-      "fileId": "string|null",
-      "width": "number|null",
-      "height": "number|null",
-      "infoList": [{ "imageScene": "string|null", "url": "string|null" }]
-    },
-    "user": {
-      "userId": "string|null",
-      "nickname": "string|null",
-      "nickName": "string|null",
-      "avatar": "string|null",
-      "xsecToken": "string|null"
-    },
-    "interactInfo": {
-      "liked": "boolean",
-      "likedCount": "string|null",
-      "commentCount": "string|null",
-      "collectedCount": "string|null",
-      "sharedCount": "string|null"
-    },
-    "cornerTagInfo": [{ "type": "string|null", "text": "string|null" }],
-    "imageList": [{ "width": "number|null", "height": "number|null", "infoList": [{ "imageScene": "string|null", "url": "string|null" }] }],
-    "video": { "duration": "number|null" }
-  }
-}
-```
-
-### Feed and profile commands
-
-`home --format json`:
-
-```json
-{
-  "ok": true,
-  "home": {
-    "pageUrl": "string",
-    "fetchedAt": "string",
-    "total": "number",
-    "posts": ["RednotePost"],
-    "savedPath": "string|undefined"
-  }
-}
-```
-
-`search --format json`:
-
-```json
-{
-  "ok": true,
-  "search": {
-    "keyword": "string",
-    "pageUrl": "string",
-    "fetchedAt": "string",
-    "total": "number",
-    "posts": ["RednotePost"],
-    "savedPath": "string|undefined"
-  }
-}
-```
-
-`get-feed-detail --format json`:
-
-```json
-{
-  "ok": true,
-  "detail": {
-    "fetchedAt": "string",
-    "total": "number",
-    "items": [{
-      "url": "string",
-      "note": {
-        "noteId": "string|null",
-        "title": "string|null",
-        "desc": "string|null",
-        "type": "string|null",
-        "interactInfo": {
-          "liked": "boolean|null",
-          "likedCount": "string|null",
-          "commentCount": "string|null",
-          "collected": "boolean|null",
-          "collectedCount": "string|null",
-          "shareCount": "string|null",
-          "followed": "boolean|null"
-        },
-        "tagList": [{ "name": "string|null" }],
-        "imageList": [{ "urlDefault": "string|null", "urlPre": "string|null", "width": "number|null", "height": "number|null" }],
-        "video": { "url": "string|null", "raw": "unknown" } | null,
-        "raw": "unknown"
-      },
-      "comments": [{
-        "id": "string|null",
-        "content": "string|null",
-        "userId": "string|null",
-        "nickname": "string|null",
-        "likedCount": "string|null",
-        "subCommentCount": "number|null",
-        "raw": "unknown"
-      }]
-    }]
-  }
-}
-```
-
-`get-profile --format json`:
-
-```json
-{
-  "ok": true,
-  "profile": {
-    "userId": "string",
-    "url": "string",
-    "fetchedAt": "string",
-    "user": {
-      "userId": "string|null",
-      "nickname": "string|null",
-      "desc": "string|null",
-      "avatar": "string|null",
-      "ipLocation": "string|null",
-      "gender": "string|null",
-      "follows": "string|number|null",
-      "fans": "string|number|null",
-      "interaction": "string|number|null",
-      "tags": ["string"],
-      "raw": "unknown"
-    },
-    "notes": ["RednotePost"],
-    "raw": {
-      "userPageData": "unknown",
-      "notes": "unknown"
-    }
-  }
-}
-```
+- `env`, `home`, `search`, `get-feed-detail`, and `get-profile` require `--save PATH` in JSON mode.
+- The command prints only the saved file path plus a field-format example; the full payload is written to disk.
+- `get-profile --mode profile` saves only the normalized user object.
+- `get-profile --mode notes` saves only the normalized notes array.
+- `get-feed-detail` saves only the normalized note items array; add `--comments` to include reduced comment data from the currently loaded comments, or `--comments COUNT` to scroll for more comments.
 
 ## Flag guidance
 
 - `--instance NAME` picks the browser instance for account-scoped commands.
 - `--format json` is best for scripting.
 - `--format md` is best for direct reading.
-- `--save` is useful for `home` and `search` when the user wants saved output.
+- `--save PATH` is required in JSON mode for `env`, `home`, `search`, `get-feed-detail`, and `get-profile`.
 - `--keyword` is required for `search`.
 - `--url` is required for `get-feed-detail` and `interact`.
 - `interact` uses `--comment TEXT` for comment content; there is no standalone `comment` command.

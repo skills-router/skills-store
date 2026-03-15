@@ -99,7 +99,7 @@ async function saveQrCodeImage(page: Page) {
     return filePath;
   }
 
-  throw new Error('未检测到可用的小红书登录二维码，请确认登录弹窗是否已打开。');
+  throw new Error('No usable Xiaohongshu login QR code was detected. Make sure the login dialog is open.');
 }
 
 function printLoginHelp() {
@@ -139,12 +139,13 @@ export async function openRednoteLogin(target: RednoteStatusTarget, session: Red
         pageUrl: session.page.url(),
         waitingForPhoneLogin: false,
         qrCodePath: null,
-        message: '当前实例已登录，无需重复执行登录操作。',
+        message: 'The current instance is already logged in. No additional login step is required.',
       },
     };
   }
 
   const { page } = await getOrCreateXiaohongshuPage(session);
+  await page.reload();
   const loginButton = page.locator('#login-btn');
   const hasLoginButton = (await loginButton.count()) > 0;
 
@@ -156,11 +157,11 @@ export async function openRednoteLogin(target: RednoteStatusTarget, session: Red
         pageUrl: page.url(),
         waitingForPhoneLogin: false,
         qrCodePath: null,
-        message: '未检测到登录按钮，当前实例可能已经登录。',
+        message: 'No login button was found. The current instance may already be logged in.',
       },
     };
   }
-  await loginButton.first().click({ timeout: 2000 });
+  await loginButton.first().click({ timeout: 2000, force: true });
   await page.waitForTimeout(500);
   const qrCodePath = await saveQrCodeImage(page);
 
@@ -171,7 +172,7 @@ export async function openRednoteLogin(target: RednoteStatusTarget, session: Red
       pageUrl: page.url(),
       waitingForPhoneLogin: true,
       qrCodePath,
-      message: '已点击登录按钮并导出二维码图片，请扫码完成登录。',
+      message: 'The login button was clicked and the QR code image was exported. Scan the code to finish logging in.',
     },
   };
 }

@@ -87,23 +87,39 @@ function printPublishHelp() {
   process.stdout.write(`rednote publish
 
 Usage:
-  npx -y @skills-store/rednote publish --type video --video ./video.mp4 --title 标题 --content 描述 [--tag 穿搭] [--tag 日常] [--publish] [--instance NAME]
-  npx -y @skills-store/rednote publish --type image --image ./1.jpg --image ./2.jpg --title 标题 --content 描述 [--tag 探店] [--publish] [--instance NAME]
-  npx -y @skills-store/rednote publish --type article --title 标题 --content '# 一级标题\n\n正文' [--publish] [--instance NAME]
+  npx -y @skills-store/rednote publish --type video --video ./video.mp4 --title "Video title" --content "Video description" [--tag fashion] [--tag ootd] [--publish] [--instance NAME]
+  npx -y @skills-store/rednote publish --type image --image ./1.jpg --image ./2.jpg --title "Image title" --content "Image description" [--tag travel] [--publish] [--instance NAME]
+  npx -y @skills-store/rednote publish --type article --title "Article title" --content '# Heading\n\nBody content' [--publish] [--instance NAME]
   node --experimental-strip-types ./scripts/rednote/publish.ts ...
   bun ./scripts/rednote/publish.ts ...
 
 Options:
   --instance NAME      Optional. Defaults to the saved lastConnect instance
-  --type TYPE          可选。video | image | article；不传时会按参数自动推断
-  --title TEXT         Required. 发布标题
-  --content TEXT       必填。视频/图文时为描述，长文时为 Markdown 内容
-  --tag TEXT           可选。重复传入多个标签，例如 --tag 穿搭 --tag OOTD
-  --video PATH         视频模式必填。只能传 1 个视频文件
-  --image PATH         图文模式必填。重复传入多张图片，最多 ${MAX_IMAGE_COUNT} 张，首张为首图
-  --publish            立即发布。不传时默认保存草稿
+  --type TYPE          Optional. video | image | article. If omitted, the type is inferred from the provided assets
+  --title TEXT         Required. Post title
+  --content TEXT       Required. Description for video/image posts, or Markdown content for article posts
+  --tag TEXT           Optional. Repeat to provide multiple tags, for example: --tag fashion --tag OOTD
+  --video PATH         Required for video posts. Only one video file is accepted
+  --image PATH         Required for image posts. Repeat to provide multiple images, up to ${MAX_IMAGE_COUNT}; the first image becomes the cover
+  --publish            Publish immediately. If omitted, the content is saved as a draft
   -h, --help           Show this help
 `);
+}
+
+function describePublishType(type: PublishType) {
+  if (type === 'video') {
+    return 'Upload Video';
+  }
+
+  if (type === 'image') {
+    return 'Upload Image Post';
+  }
+
+  return 'Write Article';
+}
+
+function describePublishAction(draft: boolean) {
+  return draft ? 'Save Draft and Leave' : 'Publish';
 }
 
 function isCreatorHomeUrl(url: string) {
@@ -398,7 +414,7 @@ async function openPublishComposer(page: Page, type: PublishType) {
   const publishNoteButton = page.locator(PUBLISH_NOTE_BUTTON_SELECTOR).filter({ hasText: PUBLISH_NOTE_BUTTON_TEXT });
   const visiblePublishNoteButton = await requireVisibleLocator(
     publishNoteButton,
-    '未找到“发布笔记”按钮，请确认已进入创作服务首页。',
+    'Could not find the Publish Note button. Make sure the Creator Services home page is open.',
     15_000,
   );
 
@@ -408,7 +424,7 @@ async function openPublishComposer(page: Page, type: PublishType) {
   const publishTypeTab = page.locator(PUBLISH_TYPE_TAB_SELECTOR).filter({ hasText: publishTypeTabText }).last();
   const visiblePublishTypeTab = await requireVisibleLocator(
     publishTypeTab,
-    `未找到“${publishTypeTabText}”入口，请确认创作服务页面已正确加载。`,
+    `Could not find the ${describePublishType(type)} entry. Make sure the Creator Services page finished loading.`,
     15_000,
   );
 
@@ -420,7 +436,7 @@ async function uploadVideoFile(page: Page, videoPath: string) {
   const uploadVideoButton = page.locator(VIDEO_UPLOAD_BUTTON_SELECTOR).filter({ hasText: VIDEO_UPLOAD_BUTTON_TEXT });
   const visibleUploadVideoButton = await requireVisibleLocator(
     uploadVideoButton,
-    '未找到“上传视频”按钮，请确认已进入视频发布页。',
+    'Could not find the Upload Video button. Make sure the video publishing page is open.',
     15_000,
   );
 
@@ -438,7 +454,7 @@ async function uploadVideoFile(page: Page, videoPath: string) {
 
   const videoFileInput = page.locator(`${VIDEO_FILE_INPUT_SELECTOR}[accept*="video"], ${VIDEO_FILE_INPUT_SELECTOR}`);
   if ((await videoFileInput.count()) === 0) {
-    throw new Error('未找到视频文件输入框，请确认上传组件已正确加载。');
+    throw new Error('Could not find the video file input. Make sure the upload component finished loading.');
   }
 
   await videoFileInput.first().setInputFiles(videoPath);
@@ -448,7 +464,7 @@ async function uploadImageFiles(page: Page, imagePaths: string[]) {
   const uploadImageButton = page.locator(IMAGE_UPLOAD_BUTTON_SELECTOR).filter({ hasText: IMAGE_UPLOAD_BUTTON_TEXT });
   const visibleUploadImageButton = await requireVisibleLocator(
     uploadImageButton,
-    '未找到“上传图片”按钮，请确认已进入图文发布页。',
+    'Could not find the Upload Image button. Make sure the image publishing page is open.',
     15_000,
   );
 
@@ -466,7 +482,7 @@ async function uploadImageFiles(page: Page, imagePaths: string[]) {
 
   const imageFileInput = page.locator(`${IMAGE_FILE_INPUT_SELECTOR}[accept*="image"], ${IMAGE_FILE_INPUT_SELECTOR}`);
   if ((await imageFileInput.count()) === 0) {
-    throw new Error('未找到图片文件输入框，请确认上传组件已正确加载。');
+    throw new Error('Could not find the image file input. Make sure the upload component finished loading.');
   }
 
   await imageFileInput.first().setInputFiles(imagePaths);
@@ -476,7 +492,7 @@ async function waitForImagePublishPage(page: Page) {
   const imagePublishPage = page.locator(IMAGE_PUBLISH_PAGE_SELECTOR);
   const visibleImagePublishPage = await requireVisibleLocator(
     imagePublishPage,
-    '未等待到图文发布页，请确认图片上传成功。',
+    'The image publishing page did not appear. Make sure the image upload completed successfully.',
     30_000,
   );
 
@@ -490,7 +506,7 @@ async function fillImageTitle(page: Page, title: string) {
   const imageTitleInput = page.locator(IMAGE_TITLE_INPUT_SELECTOR);
   const visibleImageTitleInput = await requireVisibleLocator(
     imageTitleInput,
-    '未找到图文标题输入框，请确认图文发布页已正确加载。',
+    'Could not find the image post title input. Make sure the image publishing page finished loading.',
     15_000,
   );
 
@@ -502,7 +518,7 @@ async function fillImageContent(page: Page, content: string) {
   const imageContentEditor = page.locator(IMAGE_CONTENT_EDITOR_SELECTOR);
   const visibleImageContentEditor = await requireVisibleLocator(
     imageContentEditor,
-    '未找到图文正文编辑器，请确认图文发布页已正确加载。',
+    'Could not find the image post content editor. Make sure the image publishing page finished loading.',
     15_000,
   );
 
@@ -514,7 +530,7 @@ async function openArticleEditor(page: Page) {
   const articleNewButton = page.locator(ARTICLE_NEW_BUTTON_SELECTOR).filter({ hasText: ARTICLE_NEW_BUTTON_TEXT });
   const visibleArticleNewButton = await requireVisibleLocator(
     articleNewButton,
-    '未找到“新的创作”按钮，请确认已进入长文发布页。',
+    'Could not find the New Creation button. Make sure the article publishing page is open.',
     15_000,
   );
 
@@ -526,7 +542,7 @@ async function fillArticleTitle(page: Page, title: string) {
   const articleTitleInput = page.locator(ARTICLE_TITLE_INPUT_SELECTOR);
   const visibleArticleTitleInput = await requireVisibleLocator(
     articleTitleInput,
-    '未找到长文标题输入框，请确认已进入长文编辑页。',
+    'Could not find the article title input. Make sure the article editor is open.',
     15_000,
   );
 
@@ -538,7 +554,7 @@ async function fillArticleContent(page: Page, content: string) {
   const articleContentEditor = page.locator(ARTICLE_CONTENT_EDITOR_SELECTOR);
   const visibleArticleContentEditor = await requireVisibleLocator(
     articleContentEditor,
-    '未找到长文正文编辑器，请确认已进入长文编辑页。',
+    'Could not find the article content editor. Make sure the article editor is open.',
     15_000,
   );
 
@@ -573,7 +589,7 @@ async function finalizePublish(page: Page, draft: boolean) {
   const publishActionButton = page.locator(PUBLISH_ACTION_BUTTON_SELECTOR).filter({ hasText: buttonText });
   const visiblePublishActionButton = await requireVisibleLocator(
     publishActionButton,
-    `未找到“${buttonText}”按钮，请确认发布页已正确加载。`,
+    `Could not find the ${describePublishAction(draft)} button. Make sure the publish page finished loading.`,
     15_000,
   );
 
@@ -598,7 +614,7 @@ export async function openRednotePublish(
     const creatorServiceLink = resolved.page.locator(CREATOR_SERVICE_SELECTOR).filter({ hasText: '创作服务' });
     const visibleCreatorServiceLink = await requireVisibleLocator(
       creatorServiceLink,
-      '未找到“创作服务”入口，请先打开小红书首页并确认账号已登录。',
+      'Could not find the Creator Services entry. Open the Xiaohongshu home page and make sure the account is logged in.',
     );
 
     const popupPromise = session.browserContext
@@ -617,7 +633,7 @@ export async function openRednotePublish(
     } catch {
       const existingCreatorHomePage = getSessionPages(session).find((page) => isCreatorHomeUrl(page.url()));
       if (!existingCreatorHomePage) {
-        throw new Error(`点击“创作服务”后，未跳转到 ${CREATOR_HOME_URL}`);
+        throw new Error(`After clicking Creator Services, the page did not navigate to ${CREATOR_HOME_URL}`);
       }
 
       targetPage = existingCreatorHomePage;
@@ -636,8 +652,8 @@ export async function openRednotePublish(
   return {
     ok: true,
     message: payload.draft
-      ? '已完成发布页操作并点击“暂存离开”，内容已保存到草稿。'
-      : '已完成发布页操作并点击“发布”。',
+      ? 'Publishing page actions completed and Save Draft and Leave was clicked. The content was saved as a draft.'
+      : 'Publishing page actions completed and Publish was clicked.',
   };
 }
 

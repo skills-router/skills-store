@@ -169,7 +169,7 @@ async function typeCommentContent(page: Page, content: string) {
   const commentInput = page.locator(COMMENT_INPUT_SELECTOR);
   const visibleCommentInput = await requireVisibleLocator(
     commentInput,
-    '未找到评论输入框，请确认帖子详情页已正确加载。',
+    'Could not find the comment input. Make sure the feed detail page finished loading.',
     15_000,
   );
 
@@ -197,7 +197,7 @@ async function clickSendComment(page: Page) {
   const sendButton = page.locator(COMMENT_SEND_BUTTON_SELECTOR).filter({ hasText: COMMENT_SEND_BUTTON_TEXT });
   const visibleSendButton = await requireVisibleLocator(
     sendButton,
-    '未找到“发送”按钮，请确认评论工具栏已正确加载。',
+    'Could not find the Send button. Make sure the comment toolbar finished loading.',
     15_000,
   );
 
@@ -241,15 +241,15 @@ async function waitForInteractContainer(page: Page) {
   await page.waitForTimeout(500);
   await requireVisibleLocator(
     page.locator(INTERACT_CONTAINER_SELECTOR),
-    '未找到互动工具栏，请确认帖子详情页已正确加载。',
+    'Could not find the interaction toolbar. Make sure the feed detail page finished loading.',
     15_000,
   );
 }
 
 function getActionErrorMessage(action: 'like' | 'collect') {
   return action === 'like'
-    ? '未找到点赞按钮，请确认帖子详情页已正确加载。'
-    : '未找到收藏按钮，请确认帖子详情页已正确加载。';
+    ? 'Could not find the Like button. Make sure the feed detail page finished loading.'
+    : 'Could not find the Collect button. Make sure the feed detail page finished loading.';
 }
 
 async function ensureActionApplied(page: Page, action: 'like' | 'collect', alreadyActive: boolean) {

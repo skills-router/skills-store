@@ -1,11 +1,13 @@
 #!/usr/bin/env -S node --experimental-strip-types
 
 import { parseArgs } from 'node:util';
-import { printJson, runCli } from '../utils/browser-cli.ts';
+import { runCli } from '../utils/browser-cli.ts';
 import { getRednoteEnvironmentInfo } from '../utils/browser-core.ts';
+import { ensureJsonSavePath, renderJsonSaveSummary, resolveJsonSavePath, writeJsonFile } from './output-format.ts';
 
 export type EnvCliValues = {
   format?: 'md' | 'json';
+  savePath?: string;
   help?: boolean;
 };
 
@@ -13,12 +15,13 @@ function printEnvHelp() {
   process.stdout.write(`rednote env
 
 Usage:
-  npx -y @skills-store/rednote env [--format md|json]
-  node --experimental-strip-types ./scripts/rednote/env.ts [--format md|json]
-  bun ./scripts/rednote/env.ts [--format md|json]
+  npx -y @skills-store/rednote env [--format md|json] [--save PATH]
+  node --experimental-strip-types ./scripts/rednote/env.ts [--format md|json] [--save PATH]
+  bun ./scripts/rednote/env.ts [--format md|json] [--save PATH]
 
 Options:
   --format FORMAT   Output format: md | json. Default: md
+  --save PATH       Required when --format json is used. Saves the full result as JSON
   -h, --help        Show this help
 `);
 }
@@ -50,8 +53,13 @@ export async function runEnvCommand(values: EnvCliValues = {}) {
   }
 
   const format = values.format ?? 'md';
+  ensureJsonSavePath(format, values.savePath);
+
   if (format === 'json') {
-    printJson(getRednoteEnvironmentInfo());
+    const result = getRednoteEnvironmentInfo();
+    const savedPath = resolveJsonSavePath(values.savePath);
+    writeJsonFile(result, savedPath);
+    process.stdout.write(renderJsonSaveSummary(savedPath, result));
     return;
   }
 
@@ -65,6 +73,7 @@ async function main() {
     strict: false,
     options: {
       format: { type: 'string' },
+      save: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -73,7 +82,11 @@ async function main() {
     throw new Error(`Invalid --format value: ${String(values.format)}`);
   }
 
-  await runEnvCommand(values as EnvCliValues);
+  await runEnvCommand({
+    format: values.format as 'md' | 'json' | undefined,
+    savePath: values.save,
+    help: values.help,
+  });
 }
 
 runCli(import.meta.url, main);

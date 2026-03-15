@@ -4,9 +4,10 @@ import * as cheerio from 'cheerio';
 import { parseArgs } from 'node:util';
 import vm from 'node:vm';
 import type { Page, Response } from 'playwright-core';
-import { printJson, runCli } from '../utils/browser-cli.ts';
+import { runCli } from '../utils/browser-cli.ts';
 import { resolveStatusTarget } from './status.ts';
 import { createRednoteSession, disconnectRednoteSession, ensureRednoteLoggedIn, type RednoteSession } from './checkLogin.ts';
+import { ensureJsonSavePath, renderJsonSaveSummary, resolveJsonSavePath, writeJsonFile } from './output-format.ts';
 
 export type FeedDetailFormat = 'json' | 'md';
 
@@ -14,17 +15,18 @@ export type FeedDetailCliValues = {
   instance?: string;
   urls: string[];
   format: FeedDetailFormat;
+  comments?: number | null;
+  savePath?: string;
   help?: boolean;
 };
 
 export type RednoteComment = {
-  id: string | null;
   content: string | null;
   userId: string | null;
   nickname: string | null;
-  likedCount: string | null;
-  subCommentCount: number | null;
-  raw: unknown;
+  create_time: string | number | null;
+  like_count: string | number | null;
+  sub_comment_count: number | null;
 };
 
 export type RednoteDetailNote = {
@@ -32,35 +34,22 @@ export type RednoteDetailNote = {
   title: string | null;
   desc: string | null;
   type: string | null;
-  interactInfo: {
-    liked: boolean | null;
-    likedCount: string | null;
-    commentCount: string | null;
-    collectedCount: string | null;
-    shareCount: string | null;
-    collected: boolean | null;
-    followed: boolean | null;
-  };
-  tagList: Array<{
-    name: string | null;
-  }>;
-  imageList: Array<{
-    urlDefault: string | null;
-    urlPre: string | null;
-    width: number | null;
-    height: number | null;
-  }>;
-  video: {
-    url: string | null;
-    raw: unknown;
-  } | null;
-  raw: unknown;
+  liked: boolean | null;
+  likedCount: string | null;
+  commentCount: string | null;
+  collected: boolean | null;
+  collectedCount: string | null;
+  shareCount: string | null;
+  followed: boolean | null;
+  tagList: string[];
+  imageList: string[];
+  video: string | null;
 };
 
 export type RednoteFeedDetailItem = {
   url: string;
   note: RednoteDetailNote;
-  comments: RednoteComment[];
+  comments?: RednoteComment[];
 };
 
 export type FeedDetailResult = {
@@ -76,46 +65,140 @@ function printGetFeedDetailHelp() {
   process.stdout.write(`rednote get-feed-detail
 
 Usage:
-  npx -y @skills-store/rednote get-feed-detail [--instance NAME] --url URL [--url URL] [--format md|json]
-  node --experimental-strip-types ./scripts/rednote/getFeedDetail.ts --instance NAME --url URL [--url URL] [--format md|json]
-  bun ./scripts/rednote/getFeedDetail.ts --instance NAME --url URL [--url URL] [--format md|json]
+  npx -y @skills-store/rednote get-feed-detail [--instance NAME] --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
+  node --experimental-strip-types ./scripts/rednote/getFeedDetail.ts --instance NAME --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
+  bun ./scripts/rednote/getFeedDetail.ts --instance NAME --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
 
 Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
   --url URL         Required. Xiaohongshu explore url, repeatable
+  --comments [COUNT]  Optional. Include comment data. When COUNT is provided, scroll \`.note-scroller\` until COUNT comments, the end, or timeout
   --format FORMAT   Output format: md | json. Default: md
+  --save PATH       Required when --format json is used. Saves the selected result array as JSON
   -h, --help        Show this help
 `);
 }
 
+function parseOptionWithEquals(arg: string) {
+  const equalIndex = arg.indexOf('=');
+  if (equalIndex === -1) {
+    return null;
+  }
+
+  return {
+    key: arg.slice(0, equalIndex),
+    value: arg.slice(equalIndex + 1),
+  };
+}
+
+function parseCommentsValue(value: string | undefined) {
+  if (!value) {
+    throw new Error('Missing value for --comments');
+  }
+
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid --comments value: ${String(value)}`);
+  }
+
+  return parsed;
+}
+
 export function parseGetFeedDetailCliArgs(argv: string[]): FeedDetailCliValues {
-  const { values, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    strict: false,
-    options: {
-      instance: { type: 'string' },
-      url: { type: 'string', multiple: true },
-      format: { type: 'string' },
-      help: { type: 'boolean', short: 'h' },
-    },
-  });
+  const values: FeedDetailCliValues = {
+    urls: [],
+    format: 'md',
+    comments: undefined,
+    help: false,
+  };
+
+  const positionals: string[] = [];
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const withEquals = parseOptionWithEquals(arg);
+
+    if (arg === '-h' || arg === '--help') {
+      values.help = true;
+      continue;
+    }
+
+    if (withEquals?.key === '--instance') {
+      values.instance = withEquals.value;
+      continue;
+    }
+
+    if (arg === '--instance') {
+      values.instance = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (withEquals?.key === '--url') {
+      values.urls.push(withEquals.value);
+      continue;
+    }
+
+    if (arg === '--url') {
+      const nextArg = argv[index + 1];
+      if (!nextArg || nextArg.startsWith('-')) {
+        throw new Error('Missing required option value: --url');
+      }
+      values.urls.push(nextArg);
+      index += 1;
+      continue;
+    }
+
+    if (withEquals?.key === '--format') {
+      values.format = withEquals.value as FeedDetailFormat;
+      continue;
+    }
+
+    if (arg === '--format') {
+      values.format = argv[index + 1] as FeedDetailFormat;
+      index += 1;
+      continue;
+    }
+
+    if (withEquals?.key === '--comments') {
+      values.comments = withEquals.value ? parseCommentsValue(withEquals.value) : null;
+      continue;
+    }
+
+    if (arg === '--comments') {
+      const nextArg = argv[index + 1];
+      if (nextArg && !nextArg.startsWith('-')) {
+        values.comments = parseCommentsValue(nextArg);
+        index += 1;
+      } else {
+        values.comments = null;
+      }
+      continue;
+    }
+
+    if (withEquals?.key === '--save') {
+      values.savePath = withEquals.value;
+      continue;
+    }
+
+    if (arg === '--save') {
+      values.savePath = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    positionals.push(arg);
+  }
 
   if (positionals.length > 0) {
     throw new Error(`Unexpected positional arguments: ${positionals.join(' ')}`);
   }
 
-  const format = values.format ?? 'md';
-  if (format !== 'md' && format !== 'json') {
-    throw new Error(`Invalid --format value: ${String(format)}`);
+  if (values.format !== 'md' && values.format !== 'json') {
+    throw new Error(`Invalid --format value: ${String(values.format)}`);
   }
 
-  return {
-    instance: values.instance,
-    urls: values.url ?? [],
-    format,
-    help: values.help,
-  };
+  return values;
 }
 
 function validateFeedDetailUrl(url: string) {
@@ -160,51 +243,121 @@ function extractVideoUrl(note: any) {
   return firstAvailable?.[0]?.backupUrls?.[0] ?? null;
 }
 
+const COMMENTS_CONTAINER_SELECTOR = '.note-scroller';
+const COMMENT_SCROLL_TIMEOUT_MS = 20_000;
+const COMMENT_SCROLL_IDLE_LIMIT = 4;
+
+function hasCommentsEnabled(comments: FeedDetailCliValues['comments']) {
+  return comments !== undefined;
+}
+
+function buildCommentKey(comment: any) {
+  return String(
+    comment?.id
+      ?? comment?.commentId
+      ?? comment?.comment_id
+      ?? `${comment?.userInfo?.userId ?? comment?.user_info?.user_id ?? 'unknown'}:${comment?.createTime ?? comment?.create_time ?? 'unknown'}:${comment?.content ?? ''}`
+  );
+}
+
+function getCommentCount(commentsMap: Map<string, any>) {
+  return commentsMap.size;
+}
+
+async function scrollCommentsContainer(page: Page, targetCount: number, getCount: () => number) {
+  const container = page.locator(COMMENTS_CONTAINER_SELECTOR).first();
+  const visible = await container.isVisible().catch(() => false);
+  if (!visible) {
+    return;
+  }
+
+  await container.scrollIntoViewIfNeeded().catch(() => {});
+  await container.hover().catch(() => {});
+
+  const getMetrics = async () => await container.evaluate((element) => {
+    const htmlElement = element as HTMLElement;
+    const atBottom = htmlElement.scrollTop + htmlElement.clientHeight >= htmlElement.scrollHeight - 8;
+    return {
+      scrollTop: htmlElement.scrollTop,
+      scrollHeight: htmlElement.scrollHeight,
+      clientHeight: htmlElement.clientHeight,
+      atBottom,
+    };
+  }).catch(() => null);
+
+  const deadline = Date.now() + COMMENT_SCROLL_TIMEOUT_MS;
+  let idleRounds = 0;
+
+  while (Date.now() < deadline) {
+    if (getCount() >= targetCount) {
+      return;
+    }
+
+    const beforeMetrics = await getMetrics();
+    if (!beforeMetrics) {
+      return;
+    }
+
+    const beforeCount = getCount();
+    const delta = Math.max(Math.floor(beforeMetrics.clientHeight * 0.85), 480);
+    await page.mouse.wheel(0, delta).catch(() => {});
+    await page.waitForTimeout(900);
+
+    const afterMetrics = await getMetrics();
+    await page.waitForTimeout(400);
+    const afterCount = getCount();
+
+    const countChanged = afterCount > beforeCount;
+    const scrollMoved = Boolean(afterMetrics) && afterMetrics.scrollTop > beforeMetrics.scrollTop;
+    const reachedBottom = Boolean(afterMetrics?.atBottom);
+
+    if (countChanged || scrollMoved) {
+      idleRounds = 0;
+      continue;
+    }
+
+    idleRounds += 1;
+    if ((reachedBottom && idleRounds >= 2) || idleRounds >= COMMENT_SCROLL_IDLE_LIMIT) {
+      return;
+    }
+  }
+}
+
 function normalizeDetailNote(note: any): RednoteDetailNote {
   return {
     noteId: note?.noteId ?? null,
     title: note?.title ?? null,
     desc: note?.desc ?? null,
     type: note?.type ?? null,
-    interactInfo: {
-      liked: note?.interactInfo?.liked ?? null,
-      likedCount: note?.interactInfo?.likedCount ?? null,
-      commentCount: note?.interactInfo?.commentCount ?? null,
-      collected: note?.interactInfo?.collected ?? null,
-      collectedCount: note?.interactInfo?.collectedCount ?? null,
-      shareCount: note?.interactInfo?.shareCount ?? null,
-      followed: note?.interactInfo?.followed ?? null,
-    },
+    liked: note?.interactInfo?.liked ?? null,
+    likedCount: note?.interactInfo?.likedCount ?? null,
+    commentCount: note?.interactInfo?.commentCount ?? null,
+    collected: note?.interactInfo?.collected ?? null,
+    collectedCount: note?.interactInfo?.collectedCount ?? null,
+    shareCount: note?.interactInfo?.shareCount ?? null,
+    followed: note?.interactInfo?.followed ?? null,
     tagList: Array.isArray(note?.tagList)
-      ? note.tagList.map((tag: any) => ({ name: tag?.name ?? null }))
+      ? note.tagList.map((tag: any) => tag?.name ?? null).filter((tag: string | null): tag is string => Boolean(tag))
       : [],
     imageList: Array.isArray(note?.imageList)
-      ? note.imageList.map((image: any) => ({
-          urlDefault: image?.urlDefault ?? null,
-          urlPre: image?.urlPre ?? null,
-          width: image?.width ?? null,
-          height: image?.height ?? null,
-        }))
+      ? note.imageList
+          .map((image: any) => image?.urlDefault ?? null)
+          .filter((imageUrl: string | null): imageUrl is string => Boolean(imageUrl))
       : [],
-    video: note?.video
-      ? {
-          url: extractVideoUrl(note),
-          raw: note.video,
-        }
-      : null,
-    raw: note,
+    video: extractVideoUrl(note),
   };
 }
 
 function normalizeComments(comments: any[]): RednoteComment[] {
   return comments.map((comment) => ({
-    id: comment?.id ?? comment?.commentId ?? null,
     content: comment?.content ?? null,
-    userId: comment?.userInfo?.userId ?? null,
-    nickname: comment?.userInfo?.nickname ?? null,
-    likedCount: comment?.interactInfo?.likedCount ?? null,
-    subCommentCount: typeof comment?.subCommentCount === 'number' ? comment.subCommentCount : null,
-    raw: comment,
+    userId: comment?.userInfo?.userId ?? comment?.user_info?.user_id ?? null,
+    nickname: comment?.userInfo?.nickname ?? comment?.user_info?.nickname ?? null,
+    create_time: comment?.createTime ?? comment?.create_time ?? null,
+    like_count: comment?.likeCount ?? comment?.like_count ?? comment?.interactInfo?.likedCount ?? null,
+    sub_comment_count: typeof (comment?.subCommentCount ?? comment?.sub_comment_count) === 'string'
+      ? (comment?.subCommentCount ?? comment?.sub_comment_count)
+      : null,
   }));
 }
 
@@ -212,9 +365,9 @@ function formatDetailField(value: string | number | boolean | null | undefined) 
   return value ?? '';
 }
 
-function renderDetailMarkdown(items: RednoteFeedDetailItem[]) {
+function renderDetailMarkdown(items: RednoteFeedDetailItem[], includeComments = false) {
   if (items.length === 0) {
-    return '没有获取到帖子详情。\n';
+    return 'No feed details were captured.\n';
   }
 
   return `${items.map((item) => {
@@ -222,57 +375,58 @@ function renderDetailMarkdown(items: RednoteFeedDetailItem[]) {
 
     lines.push('## Note');
     lines.push('');
-    lines.push(`- Url: ${item.url}`);
     lines.push(`- Title: ${formatDetailField(item.note.title)}`);
-    lines.push(`- Type: ${formatDetailField(item.note.type)}`);
-    lines.push(`- Liked: ${formatDetailField(item.note.interactInfo.liked)}`);
-    lines.push(`- Collected: ${formatDetailField(item.note.interactInfo.collected)}`);
-    lines.push(`- LikedCount: ${formatDetailField(item.note.interactInfo.likedCount)}`);
-    lines.push(`- CommentCount: ${formatDetailField(item.note.interactInfo.commentCount)}`);
-    lines.push(`- CollectedCount: ${formatDetailField(item.note.interactInfo.collectedCount)}`);
-    lines.push(`- ShareCount: ${formatDetailField(item.note.interactInfo.shareCount)}`);
-    lines.push(`- Tags: ${item.note.tagList.map((tag) => tag.name ? `#${tag.name}` : '').filter(Boolean).join(' ')}`);
+    lines.push(`- Liked: ${formatDetailField(item.note.liked)}`);
+    lines.push(`- Collected: ${formatDetailField(item.note.collected)}`);
+    lines.push(`- LikedCount: ${formatDetailField(item.note.likedCount)}`);
+    lines.push(`- CommentCount: ${formatDetailField(item.note.commentCount)}`);
+    lines.push(`- CollectedCount: ${formatDetailField(item.note.collectedCount)}`);
+    lines.push(`- ShareCount: ${formatDetailField(item.note.shareCount)}`);
+    lines.push(`- Tags: ${item.note.tagList.map((tag) => `#${tag}`).join(' ')}`);
     lines.push('');
     lines.push('## Content');
     lines.push('');
     lines.push(item.note.desc ?? '');
 
-    if (item.note.imageList.length > 0 || item.note.video?.url) {
+    if (item.note.imageList.length > 0 || item.note.video) {
       lines.push('');
       lines.push('## Media');
       lines.push('');
 
-      item.note.imageList.forEach((image, index) => {
-        if (image.urlDefault) {
-          lines.push(`- Image${index + 1}: ${image.urlDefault}`);
-        }
+      item.note.imageList.forEach((imageUrl, index) => {
+        lines.push(`- Image${index + 1}: ${imageUrl}`);
       });
 
-      if (item.note.video?.url) {
-        lines.push(`- Video: ${item.note.video.url}`);
+      if (item.note.video) {
+        lines.push(`- Video: ${item.note.video}`);
       }
     }
 
-    lines.push('');
-    lines.push('## Comments');
-    lines.push('');
+    if (includeComments) {
+      lines.push('');
+      lines.push('## Comments');
+      lines.push('');
 
-    if (item.comments.length === 0) {
-      lines.push('- Comments not found');
-    } else {
-      item.comments.forEach((comment) => {
-        const prefix = comment.nickname ? `${comment.nickname}: ` : '';
-        lines.push(`- ${prefix}${comment.content ?? ''}`);
-      });
+      if (!item.comments || item.comments.length === 0) {
+        lines.push('- Comments not found');
+      } else {
+        item.comments.forEach((comment) => {
+          const prefix = comment.nickname ? `${comment.nickname}: ` : '';
+          lines.push(`- ${prefix}${comment.content ?? ''}`);
+        });
+      }
     }
 
     return lines.join('\n');
   }).join('\n\n---\n\n')}\n`;
 }
 
-async function captureFeedDetail(page: Page, targetUrl: string): Promise<RednoteFeedDetailItem> {
+async function captureFeedDetail(page: Page, targetUrl: string, commentsOption: FeedDetailCliValues['comments'] = undefined): Promise<RednoteFeedDetailItem> {
+  const includeComments = hasCommentsEnabled(commentsOption);
+  const commentsTarget = typeof commentsOption === 'number' ? commentsOption : null;
   let note: any = null;
-  let comments: any[] | null = null;
+  let commentsLoaded = !includeComments;
+  const commentsMap = new Map<string, any>();
 
   const handleResponse = async (response: Response) => {
     try {
@@ -300,9 +454,13 @@ async function captureFeedDetail(page: Page, targetUrl: string): Promise<Rednote
             note = noteState.noteDetailMap[noteState.currentNoteId]?.note ?? note;
           }
         });
-      } else if (url.href.includes('comment/page?')) {
+      } else if (includeComments && url.href.includes('comment/page?')) {
         const data = await response.json() as { data?: { comments?: any[] } };
-        comments = Array.isArray(data?.data?.comments) ? data.data.comments : [];
+        const nextComments = Array.isArray(data?.data?.comments) ? data.data.comments : [];
+        commentsLoaded = true;
+        for (const comment of nextComments) {
+          commentsMap.set(buildCommentKey(comment), comment);
+        }
       }
     } catch {
     }
@@ -314,7 +472,7 @@ async function captureFeedDetail(page: Page, targetUrl: string): Promise<Rednote
 
     const deadline = Date.now() + 15_000;
     while (Date.now() < deadline) {
-      if (note && comments !== null) {
+      if (note && commentsLoaded) {
         break;
       }
       await page.waitForTimeout(200);
@@ -324,23 +482,27 @@ async function captureFeedDetail(page: Page, targetUrl: string): Promise<Rednote
       throw new Error(`Failed to capture note detail: ${targetUrl}`);
     }
 
+    if (includeComments && commentsTarget) {
+      await scrollCommentsContainer(page, commentsTarget, () => getCommentCount(commentsMap));
+    }
+
     return {
       url: targetUrl,
       note: normalizeDetailNote(note),
-      comments: normalizeComments(comments ?? []),
+      ...(includeComments ? { comments: normalizeComments([...commentsMap.values()]) } : {}),
     };
   } finally {
     page.off('response', handleResponse);
   }
 }
 
-export async function getFeedDetails(session: RednoteSession, urls: string[]): Promise<FeedDetailResult> {
+export async function getFeedDetails(session: RednoteSession, urls: string[], commentsOption: FeedDetailCliValues['comments'] = undefined): Promise<FeedDetailResult> {
   const page = await getOrCreateXiaohongshuPage(session);
   const items: RednoteFeedDetailItem[] = [];
   for (const url of urls) {
     const normalizedUrl = normalizeFeedDetailUrl(url);
     validateFeedDetailUrl(normalizedUrl);
-    items.push(await captureFeedDetail(page, normalizedUrl));
+    items.push(await captureFeedDetail(page, normalizedUrl, commentsOption));
   }
 
   return {
@@ -353,13 +515,21 @@ export async function getFeedDetails(session: RednoteSession, urls: string[]): P
   };
 }
 
-function writeFeedDetailOutput(result: FeedDetailResult, format: FeedDetailFormat) {
-  if (format === 'json') {
-    printJson(result);
+function selectFeedDetailOutput(result: FeedDetailResult) {
+  return result.detail.items;
+}
+
+function writeFeedDetailOutput(result: FeedDetailResult, values: FeedDetailCliValues) {
+  const output = selectFeedDetailOutput(result);
+
+  if (values.format === 'json') {
+    const savedPath = resolveJsonSavePath(values.savePath);
+    writeJsonFile(output, savedPath);
+    process.stdout.write(renderJsonSaveSummary(savedPath, output));
     return;
   }
 
-  process.stdout.write(renderDetailMarkdown(result.detail.items));
+  process.stdout.write(renderDetailMarkdown(result.detail.items, hasCommentsEnabled(values.comments)));
 }
 
 export async function runGetFeedDetailCommand(values: FeedDetailCliValues = { urls: [], format: 'md' }) {
@@ -367,6 +537,9 @@ export async function runGetFeedDetailCommand(values: FeedDetailCliValues = { ur
     printGetFeedDetailHelp();
     return;
   }
+
+  ensureJsonSavePath(values.format, values.savePath);
+
   if (values.urls.length === 0) {
     throw new Error('Missing required option: --url');
   }
@@ -376,8 +549,8 @@ export async function runGetFeedDetailCommand(values: FeedDetailCliValues = { ur
 
   try {
     await ensureRednoteLoggedIn(target, 'fetching feed detail', session);
-    const result = await getFeedDetails(session, values.urls);
-    writeFeedDetailOutput(result, values.format);
+    const result = await getFeedDetails(session, values.urls, values.comments);
+    writeFeedDetailOutput(result, values);
   } finally {
     await disconnectRednoteSession(session);
   }

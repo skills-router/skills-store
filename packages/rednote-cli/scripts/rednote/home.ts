@@ -2,15 +2,19 @@
 
 import { parseArgs } from 'node:util';
 import type { Page, Response } from 'playwright-core';
-import { printJson, runCli } from '../utils/browser-cli.ts';
+import { runCli } from '../utils/browser-cli.ts';
 import { resolveStatusTarget } from './status.ts';
 import * as cheerio from 'cheerio';
 import vm from 'node:vm';
 import type { RednotePost } from './post-types.ts';
 import {
+  ensureJsonSavePath,
   parseOutputCliArgs,
+  renderJsonSaveSummary,
   renderPostsMarkdown,
+  resolveJsonSavePath,
   resolveSavePath,
+  writeJsonFile,
   writePostsJsonl,
   type OutputCliValues,
 } from './output-format.ts';
@@ -97,7 +101,7 @@ Usage:
 Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
   --format FORMAT   Output format: md | json. Default: md
-  --save [PATH]     Save posts as JSONL. Uses a default path when PATH is omitted
+  --save [PATH]     In markdown mode, saves posts as JSONL and uses a default path when PATH is omitted. In json mode, PATH is required and the full result is saved as JSON
   -h, --help        Show this help
 `);
 }
@@ -263,6 +267,14 @@ export async function getRednoteHomePosts(session: RednoteSession): Promise<Home
 }
 
 function writeHomeOutput(result: HomeResult, values: HomeCliValues) {
+  if (values.format === 'json') {
+    const savedPath = resolveJsonSavePath(values.savePath);
+    result.home.savedPath = savedPath;
+    writeJsonFile(result.home.posts, savedPath);
+    process.stdout.write(renderJsonSaveSummary(savedPath, result.home.posts));
+    return;
+  }
+
   const posts = result.home.posts;
   let savedPath: string | undefined;
 
@@ -270,11 +282,6 @@ function writeHomeOutput(result: HomeResult, values: HomeCliValues) {
     savedPath = resolveSavePath('home', values.savePath);
     writePostsJsonl(posts, savedPath);
     result.home.savedPath = savedPath;
-  }
-
-  if (values.format === 'json') {
-    printJson(result);
-    return;
   }
 
   let markdown = renderPostsMarkdown(posts);
@@ -290,6 +297,7 @@ export async function runHomeCommand(values: HomeCliValues = { format: 'md', sav
     return;
   }
 
+  ensureJsonSavePath(values.format, values.savePath);
 
   const target = resolveStatusTarget(values.instance);
   const session = await createRednoteSession(target);

@@ -134,13 +134,100 @@ export function writePostsJsonl(posts: RednotePost[], filePath: string) {
   fs.writeFileSync(filePath, content ? `${content}\n` : '', 'utf8');
 }
 
+export function ensureJsonSavePath(format: OutputFormat, savePath?: string) {
+  if (format !== 'json') {
+    return;
+  }
+
+  if (!savePath?.trim()) {
+    throw new Error('The --save PATH option is required when --format json is used.');
+  }
+}
+
+export function resolveJsonSavePath(explicitPath?: string) {
+  const normalizedPath = explicitPath?.trim();
+  if (!normalizedPath) {
+    throw new Error('The --save PATH option is required when --format json is used.');
+  }
+
+  return path.resolve(normalizedPath);
+}
+
+export function writeJsonFile(payload: unknown, filePath: string) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
+}
+
+type JsonFieldExample = string | JsonFieldExample[] | { [key: string]: JsonFieldExample };
+
+function describeStringValue(value: string, key: string) {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value) || key.toLowerCase().endsWith('at')) {
+    return 'ISO-8601 string';
+  }
+
+  if (key.toLowerCase().endsWith('url')) {
+    return 'string (URL)';
+  }
+
+  if (key.toLowerCase().endsWith('path')) {
+    return 'string (path)';
+  }
+
+  return 'string';
+}
+
+function buildJsonFieldExample(value: unknown, key = '', depth = 0): JsonFieldExample {
+  if (value === null) {
+    return 'null';
+  }
+
+  if (value === undefined) {
+    return 'undefined';
+  }
+
+  if (typeof value === 'string') {
+    return describeStringValue(value, key);
+  }
+
+  if (typeof value === 'number') {
+    return 'number';
+  }
+
+  if (typeof value === 'boolean') {
+    return 'boolean';
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0 ? [buildJsonFieldExample(value[0], key, depth + 1)] : ['unknown'];
+  }
+
+  if (typeof value === 'object') {
+    if (depth >= 3 || key === 'raw') {
+      return 'object';
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+      return 'object';
+    }
+
+    return Object.fromEntries(entries.map(([entryKey, entryValue]) => [entryKey, buildJsonFieldExample(entryValue, entryKey, depth + 1)]));
+  }
+
+  return typeof value;
+}
+
+export function renderJsonSaveSummary(filePath: string, payload: unknown) {
+  return `Saved JSON: ${filePath}\n\nField format example:\n${JSON.stringify(buildJsonFieldExample(payload), null, 3)}\n`;
+}
+
 function formatField(value: string | null | undefined) {
   return value ?? '';
 }
 
 export function renderPostsMarkdown(posts: RednotePost[]) {
   if (posts.length === 0) {
-    return '没有获取到帖子。\n';
+    return 'No posts were captured.\n';
   }
 
   return `${posts

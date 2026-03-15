@@ -8,7 +8,7 @@ function printRednoteHelp() {
 
 Commands:
   browser <list|create|remove|connect>
-  env [--format md|json]
+  env [--format md|json] [--save PATH]
   status [--instance NAME]
   check-login [--instance NAME]
   login [--instance NAME]
@@ -16,21 +16,22 @@ Commands:
   interact [--instance NAME] --url URL [--like] [--collect] [--comment TEXT]
   home [--instance NAME] [--format md|json] [--save [PATH]]
   search [--instance NAME] --keyword TEXT [--format md|json] [--save [PATH]]
-  get-feed-detail [--instance NAME] --url URL [--url URL] [--format md|json]
-  get-profile [--instance NAME] --id USER_ID [--format md|json]
+  get-feed-detail [--instance NAME] --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
+  get-profile [--instance NAME] --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
 
 Examples:
   npx -y @skills-store/rednote browser list
   npx -y @skills-store/rednote browser create --name seller-main --browser chrome
   npx -y @skills-store/rednote env
+  npx -y @skills-store/rednote env --format json --save ./output/env.json
   npx -y @skills-store/rednote status --instance seller-main
   npx -y @skills-store/rednote login --instance seller-main
-  npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title 标题 --content 描述
-  npx -y @skills-store/rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "写得真好"
+  npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title "Video title" --content "Video description"
+  npx -y @skills-store/rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "Great post"
   npx -y @skills-store/rednote home --instance seller-main --format md --save
-  npx -y @skills-store/rednote search --instance seller-main --keyword 护肤 --format json --save ./output/search.jsonl
-  npx -y @skills-store/rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
-  npx -y @skills-store/rednote get-profile --instance seller-main --id USER_ID
+  npx -y @skills-store/rednote search --instance seller-main --keyword skincare --format json --save ./output/search.json
+  npx -y @skills-store/rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments 100 --format json --save ./output/feed-detail.json
+  npx -y @skills-store/rednote get-profile --instance seller-main --id USER_ID --mode notes --format json --save ./output/profile-notes.json
 `);
 }
 

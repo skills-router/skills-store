@@ -1,14 +1,18 @@
 #!/usr/bin/env -S node --experimental-strip-types
 
 import type { Page, Response } from 'playwright-core';
-import { printJson, runCli } from '../utils/browser-cli.ts';
+import { runCli } from '../utils/browser-cli.ts';
 import { resolveStatusTarget } from './status.ts';
 import { createRednoteSession, disconnectRednoteSession, ensureRednoteLoggedIn, type RednoteSession } from './checkLogin.ts';
 import type { RednotePost } from './post-types.ts';
 import {
+  ensureJsonSavePath,
   parseOutputCliArgs,
+  renderJsonSaveSummary,
   renderPostsMarkdown,
+  resolveJsonSavePath,
   resolveSavePath,
+  writeJsonFile,
   writePostsJsonl,
   type OutputCliValues,
 } from './output-format.ts';
@@ -80,6 +84,25 @@ export type SearchResult = {
   };
 };
 
+type SearchJsonPost = {
+  id: string;
+  modelType: string;
+  xsecToken: string | null;
+  url: string;
+  displayTitle: string | null;
+  cover: string | null;
+  userId: string | null;
+  nickname: string | null;
+  avatar: string | null;
+  liked: boolean;
+  likedCount: string | null;
+  commentCount: string | null;
+  collectedCount: string | null;
+  sharedCount: string | null;
+  imageList: string[];
+  videoDuration: number | null;
+};
+
 export function parseSearchCliArgs(argv: string[]) {
   return parseOutputCliArgs(argv, { includeKeyword: true });
 }
@@ -96,7 +119,7 @@ Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
   --keyword TEXT    Required. Search keyword
   --format FORMAT   Output format: md | json. Default: md
-  --save [PATH]     Save posts as JSONL. Uses a default path when PATH is omitted
+  --save [PATH]     In markdown mode, saves posts as JSONL and uses a default path when PATH is omitted. In json mode, PATH is required and the posts array is saved as JSON
   -h, --help        Show this help
 `);
 }
@@ -166,6 +189,29 @@ function normalizeSearchPost(item: XHSSearchItem): RednotePost {
         duration: noteCard.video?.capa?.duration ?? null,
       },
     },
+  };
+}
+
+function toSearchJsonPost(post: RednotePost): SearchJsonPost {
+  return {
+    id: post.id,
+    modelType: post.modelType,
+    xsecToken: post.xsecToken,
+    url: post.url,
+    displayTitle: post.noteCard.displayTitle,
+    cover: post.noteCard.cover.urlDefault,
+    userId: post.noteCard.user.userId,
+    nickname: post.noteCard.user.nickname,
+    avatar: post.noteCard.user.avatar,
+    liked: post.noteCard.interactInfo.liked,
+    likedCount: post.noteCard.interactInfo.likedCount,
+    commentCount: post.noteCard.interactInfo.commentCount,
+    collectedCount: post.noteCard.interactInfo.collectedCount,
+    sharedCount: post.noteCard.interactInfo.sharedCount,
+    imageList: post.noteCard.imageList
+      .map((image) => image.infoList.find((info) => typeof info.url === 'string' && info.url)?.url ?? null)
+      .filter((url): url is string => typeof url === 'string' && url.length > 0),
+    videoDuration: post.noteCard.video.duration,
   };
 }
 
@@ -257,6 +303,14 @@ export async function searchRednotePosts(session: RednoteSession, keyword: strin
 }
 
 function writeSearchOutput(result: SearchResult, values: SearchCliValues) {
+  if (values.format === 'json') {
+    const savedPath = resolveJsonSavePath(values.savePath);
+    const posts = result.search.posts.map(toSearchJsonPost);
+    writeJsonFile(posts, savedPath);
+    process.stdout.write(renderJsonSaveSummary(savedPath, posts));
+    return;
+  }
+
   const posts = result.search.posts;
   let savedPath: string | undefined;
 
@@ -264,11 +318,6 @@ function writeSearchOutput(result: SearchResult, values: SearchCliValues) {
     savedPath = resolveSavePath('search', values.savePath, result.search.keyword);
     writePostsJsonl(posts, savedPath);
     result.search.savedPath = savedPath;
-  }
-
-  if (values.format === 'json') {
-    printJson(result);
-    return;
   }
 
   let markdown = renderPostsMarkdown(posts);
@@ -284,6 +333,7 @@ export async function runSearchCommand(values: SearchCliValues = { format: 'md',
     return;
   }
 
+  ensureJsonSavePath(values.format, values.savePath);
 
   const keyword = values.keyword?.trim();
   if (!keyword) {
