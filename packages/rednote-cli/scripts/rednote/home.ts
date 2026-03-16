@@ -3,6 +3,7 @@
 import { parseArgs } from 'node:util';
 import type { Page, Response } from 'playwright-core';
 import { runCli } from '../utils/browser-cli.ts';
+import { simulateMousePresence } from '../utils/mouse-helper.ts';
 import { resolveStatusTarget } from './status.ts';
 import * as cheerio from 'cheerio';
 import vm from 'node:vm';
@@ -10,15 +11,16 @@ import type { RednotePost } from './post-types.ts';
 import {
   ensureJsonSavePath,
   parseOutputCliArgs,
-  renderJsonSaveSummary,
-  renderPostsMarkdown,
+  renderPostSummaryList,
   resolveJsonSavePath,
   resolveSavePath,
   writeJsonFile,
   writePostsJsonl,
   type OutputCliValues,
+  type PostSummaryListItem,
 } from './output-format.ts';
 import { createRednoteSession, disconnectRednoteSession, type RednoteSession } from './checkLogin.ts';
+import { initializeRednoteDatabase, listPersistedPostSummaries, persistHomePosts, type PersistedPostSummary } from './persistence.ts';
 
 export interface XHSHomeFeedItem {
   id: string;
@@ -82,6 +84,7 @@ export type HomeResult = {
     fetchedAt: string;
     total: number;
     posts: RednotePost[];
+    summaries: PostSummaryListItem[];
     savedPath?: string;
   };
 };
@@ -114,14 +117,15 @@ function normalizeHomePost(item: XHSHomeFeedItem): RednotePost {
   const imageList = Array.isArray(noteCard.imageList) ? noteCard.imageList : [];
   const cornerTagInfo = Array.isArray(noteCard.cornerTagInfo) ? noteCard.cornerTagInfo : [];
   const xsecToken = item.xsecToken ?? null;
+  const url = xsecToken
+    ? `https://www.xiaohongshu.com/explore/${item.id}?xsec_token=${xsecToken}`
+    : `https://www.xiaohongshu.com/explore/${item.id}`;
 
   return {
     id: item.id,
     modelType: item.modelType,
     xsecToken,
-    url: xsecToken
-      ? `https://www.xiaohongshu.com/explore/${item.id}?xsec_token=${xsecToken}`
-      : `https://www.xiaohongshu.com/explore/${item.id}`,
+    url,
     noteCard: {
       type: noteCard.type ?? null,
       displayTitle: noteCard.displayTitle ?? null,
@@ -172,6 +176,19 @@ function normalizeHomePost(item: XHSHomeFeedItem): RednotePost {
       },
     },
   };
+}
+
+function buildPostSummaryList(posts: RednotePost[], persistedRows: PersistedPostSummary[] = []): PostSummaryListItem[] {
+  const persistedMap = new Map(persistedRows.map((row) => [row.noteId, row]));
+
+  return posts.map((post) => {
+    const persisted = persistedMap.get(post.id);
+    return {
+      id: persisted?.id ?? post.id,
+      title: persisted?.title ?? post.noteCard.displayTitle ?? '',
+      like: persisted?.likeCount ?? post.noteCard.interactInfo.likedCount ?? '',
+    };
+  });
 }
 
 async function getOrCreateXiaohongshuPage(session: RednoteSession) {
@@ -246,14 +263,27 @@ async function collectHomeFeedItems(page: Page) {
     await page.goto('https://www.xiaohongshu.com/explore/', { waitUntil: 'domcontentloaded' });
   }
 
+  await simulateMousePresence(page);
   await page.waitForTimeout(500);
-  return await feedPromise;
+  const feedItems = await feedPromise;
+  await simulateMousePresence(page);
+  return feedItems;
 }
 
-export async function getRednoteHomePosts(session: RednoteSession): Promise<HomeResult> {
+export async function getRednoteHomePosts(session: RednoteSession, instanceName?: string): Promise<HomeResult> {
   const page = await getOrCreateXiaohongshuPage(session);
   const items = await collectHomeFeedItems(page);
   const posts = items.map(normalizeHomePost);
+
+  let summaries = buildPostSummaryList(posts);
+
+  if (instanceName) {
+    await persistHomePosts(instanceName, posts.map((post, index) => ({
+      post,
+      raw: items[index] ?? post,
+    })));
+    summaries = buildPostSummaryList(posts, await listPersistedPostSummaries(instanceName, posts.map((post) => post.id)));
+  }
 
   return {
     ok: true,
@@ -262,6 +292,7 @@ export async function getRednoteHomePosts(session: RednoteSession): Promise<Home
       fetchedAt: new Date().toISOString(),
       total: posts.length,
       posts,
+      summaries,
     },
   };
 }
@@ -271,24 +302,19 @@ function writeHomeOutput(result: HomeResult, values: HomeCliValues) {
     const savedPath = resolveJsonSavePath(values.savePath);
     result.home.savedPath = savedPath;
     writeJsonFile(result.home.posts, savedPath);
-    process.stdout.write(renderJsonSaveSummary(savedPath, result.home.posts));
+    process.stdout.write(renderPostSummaryList(result.home.summaries));
     return;
   }
 
   const posts = result.home.posts;
-  let savedPath: string | undefined;
 
   if (values.saveRequested) {
-    savedPath = resolveSavePath('home', values.savePath);
+    const savedPath = resolveSavePath('home', values.savePath);
     writePostsJsonl(posts, savedPath);
     result.home.savedPath = savedPath;
   }
 
-  let markdown = renderPostsMarkdown(posts);
-  if (savedPath) {
-    markdown = `Saved JSONL: ${savedPath}\n\n${markdown}`;
-  }
-  process.stdout.write(markdown);
+  process.stdout.write(renderPostSummaryList(result.home.summaries));
 }
 
 export async function runHomeCommand(values: HomeCliValues = { format: 'md', saveRequested: false }) {
@@ -298,12 +324,13 @@ export async function runHomeCommand(values: HomeCliValues = { format: 'md', sav
   }
 
   ensureJsonSavePath(values.format, values.savePath);
+  await initializeRednoteDatabase();
 
   const target = resolveStatusTarget(values.instance);
   const session = await createRednoteSession(target);
 
   try {
-    const result = await getRednoteHomePosts(session);
+    const result = await getRednoteHomePosts(session, target.instanceName);
     writeHomeOutput(result, values);
   } finally {
     await disconnectRednoteSession(session);

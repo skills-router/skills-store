@@ -180,6 +180,8 @@ function normalizeProfileUser(userPageData: any): RednoteProfileUser {
   };
 }
 
+import { buildExploreUrl, decodeUrlEscapedValue } from './url-format.ts';
+
 function normalizeProfileNote(item: XHSProfileNoteItem): RednotePost | null {
   const id = firstNonNull(item.id, item.noteId);
   if (!id) {
@@ -196,15 +198,13 @@ function normalizeProfileNote(item: XHSProfileNoteItem): RednotePost | null {
   const cornerTagInfo = Array.isArray(noteCard.cornerTagInfo ?? noteCard.corner_tag_info)
     ? (noteCard.cornerTagInfo ?? noteCard.corner_tag_info)
     : [];
-  const xsecToken = firstNonNull(item.xsecToken, item.xsec_token);
+  const xsecToken = decodeUrlEscapedValue(firstNonNull(item.xsecToken, item.xsec_token));
 
   return {
     id,
     modelType: firstNonNull(item.modelType, item.model_type) ?? 'note',
     xsecToken,
-    url: xsecToken
-      ? `https://www.xiaohongshu.com/explore/${id}?xsec_token=${xsecToken}`
-      : `https://www.xiaohongshu.com/explore/${id}`,
+    url: buildExploreUrl(id, xsecToken),
     noteCard: {
       type: firstNonNull(noteCard.type, null),
       displayTitle: firstNonNull(noteCard.displayTitle, noteCard.display_title),

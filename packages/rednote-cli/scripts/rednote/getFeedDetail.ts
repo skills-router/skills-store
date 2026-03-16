@@ -5,15 +5,18 @@ import { parseArgs } from 'node:util';
 import vm from 'node:vm';
 import type { Page, Response } from 'playwright-core';
 import { runCli } from '../utils/browser-cli.ts';
+import { simulateMouseMove, simulateMousePresence, simulateMouseWheel } from '../utils/mouse-helper.ts';
 import { resolveStatusTarget } from './status.ts';
 import { createRednoteSession, disconnectRednoteSession, ensureRednoteLoggedIn, type RednoteSession } from './checkLogin.ts';
 import { ensureJsonSavePath, renderJsonSaveSummary, resolveJsonSavePath, writeJsonFile } from './output-format.ts';
+import { findPersistedPostUrlByRecordId, initializeRednoteDatabase, persistFeedDetail } from './persistence.ts';
 
 export type FeedDetailFormat = 'json' | 'md';
 
 export type FeedDetailCliValues = {
   instance?: string;
   urls: string[];
+  ids: string[];
   format: FeedDetailFormat;
   comments?: number | null;
   savePath?: string;
@@ -65,13 +68,14 @@ function printGetFeedDetailHelp() {
   process.stdout.write(`rednote get-feed-detail
 
 Usage:
-  npx -y @skills-store/rednote get-feed-detail [--instance NAME] --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
-  node --experimental-strip-types ./scripts/rednote/getFeedDetail.ts --instance NAME --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
-  bun ./scripts/rednote/getFeedDetail.ts --instance NAME --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
+  npx -y @skills-store/rednote get-feed-detail [--instance NAME] [--url URL] [--url URL] [--id ID] [--id ID] [--comments [COUNT]] [--format md|json] [--save PATH]
+  node --experimental-strip-types ./scripts/rednote/getFeedDetail.ts --instance NAME [--url URL] [--url URL] [--id ID] [--id ID] [--comments [COUNT]] [--format md|json] [--save PATH]
+  bun ./scripts/rednote/getFeedDetail.ts --instance NAME [--url URL] [--url URL] [--id ID] [--id ID] [--comments [COUNT]] [--format md|json] [--save PATH]
 
 Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
-  --url URL         Required. Xiaohongshu explore url, repeatable
+  --url URL         Optional. Xiaohongshu explore url, repeatable
+  --id ID           Optional. Database record id from home/search output, repeatable
   --comments [COUNT]  Optional. Include comment data. When COUNT is provided, scroll \`.note-scroller\` until COUNT comments, the end, or timeout
   --format FORMAT   Output format: md | json. Default: md
   --save PATH       Required when --format json is used. Saves the selected result array as JSON
@@ -107,6 +111,7 @@ function parseCommentsValue(value: string | undefined) {
 export function parseGetFeedDetailCliArgs(argv: string[]): FeedDetailCliValues {
   const values: FeedDetailCliValues = {
     urls: [],
+    ids: [],
     format: 'md',
     comments: undefined,
     help: false,
@@ -145,6 +150,21 @@ export function parseGetFeedDetailCliArgs(argv: string[]): FeedDetailCliValues {
         throw new Error('Missing required option value: --url');
       }
       values.urls.push(nextArg);
+      index += 1;
+      continue;
+    }
+
+    if (withEquals?.key === '--id') {
+      values.ids.push(withEquals.value);
+      continue;
+    }
+
+    if (arg === '--id') {
+      const nextArg = argv[index + 1];
+      if (!nextArg || nextArg.startsWith('-')) {
+        throw new Error('Missing required option value: --id');
+      }
+      values.ids.push(nextArg);
       index += 1;
       continue;
     }
@@ -218,21 +238,6 @@ function validateFeedDetailUrl(url: string) {
   }
 }
 
-function normalizeFeedDetailUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    if (!parsed.searchParams.has('xsec_source')) {
-      parsed.searchParams.set('xsec_source', 'pc_feed');
-    }
-    return parsed.toString();
-  } catch (error) {
-    if (error instanceof TypeError) {
-      throw new Error(`url is not valid: ${url}`);
-    }
-    throw error;
-  }
-}
-
 async function getOrCreateXiaohongshuPage(session: RednoteSession) {
   return session.page;
 }
@@ -272,7 +277,7 @@ async function scrollCommentsContainer(page: Page, targetCount: number, getCount
   }
 
   await container.scrollIntoViewIfNeeded().catch(() => {});
-  await container.hover().catch(() => {});
+  await simulateMouseMove(page, { locator: container, settleMs: 100 }).catch(() => {});
 
   const getMetrics = async () => await container.evaluate((element) => {
     const htmlElement = element as HTMLElement;
@@ -300,8 +305,7 @@ async function scrollCommentsContainer(page: Page, targetCount: number, getCount
 
     const beforeCount = getCount();
     const delta = Math.max(Math.floor(beforeMetrics.clientHeight * 0.85), 480);
-    await page.mouse.wheel(0, delta).catch(() => {});
-    await page.waitForTimeout(900);
+    await simulateMouseWheel(page, { locator: container, deltaY: delta, moveBeforeScroll: false, settleMs: 900 }).catch(() => {});
 
     const afterMetrics = await getMetrics();
     await page.waitForTimeout(400);
@@ -421,7 +425,12 @@ function renderDetailMarkdown(items: RednoteFeedDetailItem[], includeComments = 
   }).join('\n\n---\n\n')}\n`;
 }
 
-async function captureFeedDetail(page: Page, targetUrl: string, commentsOption: FeedDetailCliValues['comments'] = undefined): Promise<RednoteFeedDetailItem> {
+async function captureFeedDetail(
+  page: Page,
+  targetUrl: string,
+  commentsOption: FeedDetailCliValues['comments'] = undefined,
+  instanceName?: string,
+): Promise<RednoteFeedDetailItem> {
   const includeComments = hasCommentsEnabled(commentsOption);
   const commentsTarget = typeof commentsOption === 'number' ? commentsOption : null;
   let note: any = null;
@@ -469,6 +478,7 @@ async function captureFeedDetail(page: Page, targetUrl: string, commentsOption: 
   page.on('response', handleResponse);
   try {
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+    await simulateMousePresence(page);
 
     const deadline = Date.now() + 15_000;
     while (Date.now() < deadline) {
@@ -486,23 +496,39 @@ async function captureFeedDetail(page: Page, targetUrl: string, commentsOption: 
       await scrollCommentsContainer(page, commentsTarget, () => getCommentCount(commentsMap));
     }
 
-    return {
+    const item = {
       url: targetUrl,
       note: normalizeDetailNote(note),
       ...(includeComments ? { comments: normalizeComments([...commentsMap.values()]) } : {}),
     };
+
+    if (instanceName) {
+      await persistFeedDetail({
+        instanceName,
+        url: targetUrl,
+        note: item.note,
+        rawNote: note,
+        rawComments: includeComments ? [...commentsMap.values()] : [],
+      });
+    }
+
+    await simulateMousePresence(page);
+    return item;
   } finally {
     page.off('response', handleResponse);
   }
 }
 
-export async function getFeedDetails(session: RednoteSession, urls: string[], commentsOption: FeedDetailCliValues['comments'] = undefined): Promise<FeedDetailResult> {
+export async function getFeedDetails(
+  session: RednoteSession,
+  urls: string[],
+  commentsOption: FeedDetailCliValues['comments'] = undefined,
+  instanceName?: string,
+): Promise<FeedDetailResult> {
   const page = await getOrCreateXiaohongshuPage(session);
   const items: RednoteFeedDetailItem[] = [];
   for (const url of urls) {
-    const normalizedUrl = normalizeFeedDetailUrl(url);
-    validateFeedDetailUrl(normalizedUrl);
-    items.push(await captureFeedDetail(page, normalizedUrl, commentsOption));
+    items.push(await captureFeedDetail(page, url, commentsOption, instanceName));
   }
 
   return {
@@ -513,6 +539,28 @@ export async function getFeedDetails(session: RednoteSession, urls: string[], co
       items,
     },
   };
+}
+
+async function resolveFeedDetailUrls(values: FeedDetailCliValues, instanceName?: string) {
+  const urls = [...values.urls];
+
+  if (values.ids.length === 0) {
+    return urls;
+  }
+
+  if (!instanceName) {
+    throw new Error('The --id option requires an instance-backed session.');
+  }
+
+  for (const id of values.ids) {
+    const url = await findPersistedPostUrlByRecordId(instanceName, id);
+    if (!url) {
+      throw new Error(`No saved post url found for id: ${id}`);
+    }
+    urls.push(url);
+  }
+
+  return urls;
 }
 
 function selectFeedDetailOutput(result: FeedDetailResult) {
@@ -532,7 +580,7 @@ function writeFeedDetailOutput(result: FeedDetailResult, values: FeedDetailCliVa
   process.stdout.write(renderDetailMarkdown(result.detail.items, hasCommentsEnabled(values.comments)));
 }
 
-export async function runGetFeedDetailCommand(values: FeedDetailCliValues = { urls: [], format: 'md' }) {
+export async function runGetFeedDetailCommand(values: FeedDetailCliValues = { urls: [], ids: [], format: 'md' }) {
   if (values.help) {
     printGetFeedDetailHelp();
     return;
@@ -540,16 +588,19 @@ export async function runGetFeedDetailCommand(values: FeedDetailCliValues = { ur
 
   ensureJsonSavePath(values.format, values.savePath);
 
-  if (values.urls.length === 0) {
-    throw new Error('Missing required option: --url');
+  if (values.urls.length === 0 && values.ids.length === 0) {
+    throw new Error('Missing required option: --url or --id');
   }
+
+  await initializeRednoteDatabase();
 
   const target = resolveStatusTarget(values.instance);
   const session = await createRednoteSession(target);
 
   try {
     await ensureRednoteLoggedIn(target, 'fetching feed detail', session);
-    const result = await getFeedDetails(session, values.urls, values.comments);
+    const urls = await resolveFeedDetailUrls(values, target.instanceName);
+    const result = await getFeedDetails(session, urls, values.comments, target.instanceName);
     writeFeedDetailOutput(result, values);
   } finally {
     await disconnectRednoteSession(session);

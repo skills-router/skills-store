@@ -35,12 +35,17 @@
     "bun:get-profile": "bun ./scripts/rednote/getProfile.ts"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.0",
+    "better-sqlite3": "^12.8.0",
     "cheerio": "^1.2.0",
     "chrome-paths": "^1.0.1",
     "edge-paths": "^3.0.5",
+    "nanoid": "^5.1.7",
     "pid-port": "^1.0.2",
     "playwright-core": "^1.52.0",
-    "ps-list": "^8.1.1"
+    "playwright-ghost-cursor": "^1.0.2",
+    "ps-list": "^8.1.1",
+    "typeorm": "^0.3.28"
   },
   "engines": {
     "node": ">=22.6.0",

@@ -130,6 +130,7 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const PACKAGE_ROOT = path.resolve(SCRIPT_DIR, '../..');
 export const SKILLS_ROUTER_HOME = path.join(os.homedir(), '.skills-router');
 export const REDNOTE_STORAGE_ROOT = path.join(SKILLS_ROUTER_HOME, 'rednote');
+export const REDNOTE_DATABASE_PATH = path.join(REDNOTE_STORAGE_ROOT, 'main.db');
 export const INSTANCES_DIR = path.join(REDNOTE_STORAGE_ROOT, 'instances');
 export const INSTANCE_STORE_PATH = path.join(INSTANCES_DIR, 'data.json');
 export const LEGACY_PACKAGE_INSTANCES_DIR = path.join(PACKAGE_ROOT, 'instances');
@@ -224,6 +225,7 @@ export function getRednoteEnvironmentInfo() {
     nodeVersion: process.version,
     storageHome: SKILLS_ROUTER_HOME,
     storageRoot: REDNOTE_STORAGE_ROOT,
+    databasePath: REDNOTE_DATABASE_PATH,
     instancesDir: INSTANCES_DIR,
     instanceStorePath: INSTANCE_STORE_PATH,
     legacyPackageInstancesDir: LEGACY_PACKAGE_INSTANCES_DIR,
@@ -903,4 +905,3 @@ export async function launchBrowser(spec: BrowserSpec, executablePath: string, u
     wsUrl,
   };
 }
-

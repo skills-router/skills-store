@@ -2,19 +2,21 @@
 
 import type { Page, Response } from 'playwright-core';
 import { runCli } from '../utils/browser-cli.ts';
+import { simulateMousePresence } from '../utils/mouse-helper.ts';
 import { resolveStatusTarget } from './status.ts';
 import { createRednoteSession, disconnectRednoteSession, ensureRednoteLoggedIn, type RednoteSession } from './checkLogin.ts';
+import { initializeRednoteDatabase, listPersistedPostSummaries, persistSearchPosts, type PersistedPostSummary } from './persistence.ts';
 import type { RednotePost } from './post-types.ts';
 import {
   ensureJsonSavePath,
   parseOutputCliArgs,
-  renderJsonSaveSummary,
-  renderPostsMarkdown,
+  renderPostSummaryList,
   resolveJsonSavePath,
   resolveSavePath,
   writeJsonFile,
   writePostsJsonl,
   type OutputCliValues,
+  type PostSummaryListItem,
 } from './output-format.ts';
 
 export interface XHSSearchItem {
@@ -80,6 +82,7 @@ export type SearchResult = {
     fetchedAt: string;
     total: number;
     posts: RednotePost[];
+    summaries: PostSummaryListItem[];
     savedPath?: string;
   };
 };
@@ -132,14 +135,15 @@ function normalizeSearchPost(item: XHSSearchItem): RednotePost {
   const imageList = Array.isArray(noteCard.image_list) ? noteCard.image_list : [];
   const cornerTagInfo = Array.isArray(noteCard.corner_tag_info) ? noteCard.corner_tag_info : [];
   const xsecToken = item.xsec_token ?? null;
+  const url = xsecToken
+    ? `https://www.xiaohongshu.com/explore/${item.id}?xsec_token=${xsecToken}`
+    : `https://www.xiaohongshu.com/explore/${item.id}`;
 
   return {
     id: item.id,
     modelType: item.model_type,
     xsecToken,
-    url: xsecToken
-      ? `https://www.xiaohongshu.com/explore/${item.id}?xsec_token=${xsecToken}`
-      : `https://www.xiaohongshu.com/explore/${item.id}`,
+    url,
     noteCard: {
       type: noteCard.type ?? null,
       displayTitle: noteCard.display_title ?? null,
@@ -190,6 +194,19 @@ function normalizeSearchPost(item: XHSSearchItem): RednotePost {
       },
     },
   };
+}
+
+function buildPostSummaryList(posts: RednotePost[], persistedRows: PersistedPostSummary[] = []): PostSummaryListItem[] {
+  const persistedMap = new Map(persistedRows.map((row) => [row.noteId, row]));
+
+  return posts.map((post) => {
+    const persisted = persistedMap.get(post.id);
+    return {
+      id: persisted?.id ?? post.id,
+      title: persisted?.title ?? post.noteCard.displayTitle ?? '',
+      like: persisted?.likeCount ?? post.noteCard.interactInfo.likedCount ?? '',
+    };
+  });
 }
 
 function toSearchJsonPost(post: RednotePost): SearchJsonPost {
@@ -277,18 +294,31 @@ async function collectSearchItems(page: Page, keyword: string) {
   }
 
   const searchInput = page.locator('#search-input');
+  await simulateMousePresence(page, { locator: searchInput });
   await searchInput.focus();
   await searchInput.fill(keyword);
   await page.keyboard.press('Enter');
   await page.waitForTimeout(500);
 
-  return await searchPromise;
+  const searchItems = await searchPromise;
+  await simulateMousePresence(page);
+  return searchItems;
 }
 
-export async function searchRednotePosts(session: RednoteSession, keyword: string): Promise<SearchResult> {
+export async function searchRednotePosts(session: RednoteSession, keyword: string, instanceName?: string): Promise<SearchResult> {
   const page = await getOrCreateXiaohongshuPage(session);
   const items = await collectSearchItems(page, keyword);
   const posts = items.map(normalizeSearchPost);
+
+  let summaries = buildPostSummaryList(posts);
+
+  if (instanceName) {
+    await persistSearchPosts(instanceName, posts.map((post, index) => ({
+      post,
+      raw: items[index] ?? post,
+    })));
+    summaries = buildPostSummaryList(posts, await listPersistedPostSummaries(instanceName, posts.map((post) => post.id)));
+  }
 
   return {
     ok: true,
@@ -298,6 +328,7 @@ export async function searchRednotePosts(session: RednoteSession, keyword: strin
       fetchedAt: new Date().toISOString(),
       total: posts.length,
       posts,
+      summaries,
     },
   };
 }
@@ -307,24 +338,19 @@ function writeSearchOutput(result: SearchResult, values: SearchCliValues) {
     const savedPath = resolveJsonSavePath(values.savePath);
     const posts = result.search.posts.map(toSearchJsonPost);
     writeJsonFile(posts, savedPath);
-    process.stdout.write(renderJsonSaveSummary(savedPath, posts));
+    process.stdout.write(renderPostSummaryList(result.search.summaries));
     return;
   }
 
   const posts = result.search.posts;
-  let savedPath: string | undefined;
 
   if (values.saveRequested) {
-    savedPath = resolveSavePath('search', values.savePath, result.search.keyword);
+    const savedPath = resolveSavePath('search', values.savePath, result.search.keyword);
     writePostsJsonl(posts, savedPath);
     result.search.savedPath = savedPath;
   }
 
-  let markdown = renderPostsMarkdown(posts);
-  if (savedPath) {
-    markdown = `Saved JSONL: ${savedPath}\n\n${markdown}`;
-  }
-  process.stdout.write(markdown);
+  process.stdout.write(renderPostSummaryList(result.search.summaries));
 }
 
 export async function runSearchCommand(values: SearchCliValues = { format: 'md', saveRequested: false }) {
@@ -340,12 +366,14 @@ export async function runSearchCommand(values: SearchCliValues = { format: 'md',
     throw new Error('Missing required option: --keyword');
   }
 
+  await initializeRednoteDatabase();
+
   const target = resolveStatusTarget(values.instance);
   const session = await createRednoteSession(target);
 
   try {
     await ensureRednoteLoggedIn(target, 'search', session);
-    const result = await searchRednotePosts(session, keyword);
+    const result = await searchRednotePosts(session, keyword, target.instanceName);
     writeSearchOutput(result, values);
   } finally {
     await disconnectRednoteSession(session);

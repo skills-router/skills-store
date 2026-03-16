@@ -97,6 +97,16 @@ rednote home --instance seller-main --format md --save
 
 Use `home` when you want the current home feed and optionally want to save it to disk.
 
+The terminal output always uses the compact summary format below, even when `--format json` is selected:
+
+```text
+id=<database nanoid>
+title=<post title>
+like=<liked count>
+```
+
+Captured home feed posts are upserted into `~/.skills-router/rednote/main.db` (the same path returned by `rednote env`). They are stored in the `rednote_posts` table, and the printed `id` is that table's `nanoid(16)` primary key.
+
 ### `search`
 
 ```bash
@@ -106,13 +116,26 @@ rednote search --instance seller-main --keyword 护肤 --format json --save ./ou
 
 Use `search` for keyword-based note lookup.
 
+The terminal output always uses the compact summary format below, even when `--format json` is selected:
+
+```text
+id=<database nanoid>
+title=<post title>
+like=<liked count>
+```
+
+Captured search results are also upserted into `~/.skills-router/rednote/main.db` in the `rednote_posts` table. The printed `id` can be passed directly to `get-feed-detail --id`.
+
 ### `get-feed-detail`
 
 ```bash
 rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
+rednote get-feed-detail --instance seller-main --id AynQ7_utnNiW1Ytk
 ```
 
-Use `get-feed-detail` when you already have a Xiaohongshu note URL.
+Use `get-feed-detail` when you already have a Xiaohongshu note URL, or when you have a database `id` returned by `home` or `search`. With `--id`, the CLI looks up the saved URL from `~/.skills-router/rednote/main.db` and then navigates with that raw URL.
+
+Captured note details and comments are also upserted into `~/.skills-router/rednote/main.db` in `rednote_post_details` and `rednote_post_comments`.
 
 ### `get-profile`
 
@@ -137,9 +160,10 @@ Use `interact` when you want the single entrypoint for note operations such as l
 - `--instance NAME` selects the browser instance for account-scoped commands.
 - `--format json` is best for scripting.
 - `--format md` is best for direct reading.
-- `--save` is useful for `home` and `search` when you want saved output.
+- `--save` is useful for `home` and `search` when you want the raw post array written to disk.
 - `--keyword` is required for `search`.
-- `--url` is required for `get-feed-detail`.
+- `home` and `search` always print `id/title/like` summaries to stdout; `--format json` only changes the saved file payload.
+- `get-feed-detail` accepts either `--url URL` or `--id ID`.
 - `--id` is required for `get-profile`.
 - `--url` is required for `interact`; at least one of `--like`, `--collect`, or `--comment TEXT` must be provided.
 - replies are sent with `interact --comment TEXT`.
@@ -203,6 +227,7 @@ Use these shapes as the success model when a command returns JSON.
   "nodeVersion": "string",
   "storageHome": "string",
   "storageRoot": "string",
+  "databasePath": "string",
   "instancesDir": "string",
   "instanceStorePath": "string",
   "legacyPackageInstancesDir": "string"
@@ -341,36 +366,25 @@ Use these shapes as the success model when a command returns JSON.
 
 ### Feed and profile commands
 
-`home --format json`:
+`home` stdout (both `md` and `json`):
 
-```json
-{
-  "ok": true,
-  "home": {
-    "pageUrl": "string",
-    "fetchedAt": "string",
-    "total": "number",
-    "posts": ["RednotePost"],
-    "savedPath": "string|undefined"
-  }
-}
+```text
+id=<database nanoid>
+title=<post title>
+like=<liked count>
 ```
 
-`search --format json`:
+`home --format json --save PATH` writes the raw `RednotePost[]` array to disk, while stdout still prints the summary list above.
 
-```json
-{
-  "ok": true,
-  "search": {
-    "keyword": "string",
-    "pageUrl": "string",
-    "fetchedAt": "string",
-    "total": "number",
-    "posts": ["RednotePost"],
-    "savedPath": "string|undefined"
-  }
-}
+`search` stdout (both `md` and `json`):
+
+```text
+id=<database nanoid>
+title=<post title>
+like=<liked count>
 ```
+
+`search --format json --save PATH` writes the raw `RednotePost[]` array to disk, while stdout still prints the summary list above.
 
 `get-feed-detail --format json`:
 

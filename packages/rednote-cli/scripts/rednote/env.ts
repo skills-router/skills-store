@@ -37,6 +37,7 @@ function renderEnvironmentMarkdown() {
     `- Package Root: ${info.packageRoot}`,
     `- Storage Home: ${info.storageHome}`,
     `- Storage Root: ${info.storageRoot}`,
+    `- Database: ${info.databasePath}`,
     `- Instances Dir: ${info.instancesDir}`,
     `- Instance Store: ${info.instanceStorePath}`,
     `- Legacy Package Instances: ${info.legacyPackageInstancesDir}`,

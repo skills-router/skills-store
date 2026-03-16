@@ -17,6 +17,12 @@ export type OutputCliValues = {
   help?: boolean;
 };
 
+export type PostSummaryListItem = {
+  id: string;
+  title: string;
+  like: string;
+};
+
 function parseOptionWithEquals(arg: string) {
   const equalIndex = arg.indexOf('=');
   if (equalIndex === -1) {
@@ -223,6 +229,20 @@ export function renderJsonSaveSummary(filePath: string, payload: unknown) {
 
 function formatField(value: string | null | undefined) {
   return value ?? '';
+}
+
+export function renderPostSummaryList(items: PostSummaryListItem[]) {
+  if (items.length === 0) {
+    return 'No posts were captured.\n';
+  }
+
+  return `${items
+    .map((item) => [
+      `id=${item.id}`,
+      `title=${item.title}`,
+      `like=${item.like}`,
+    ].join('\n'))
+    .join('\n\n')}\n`;
 }
 
 export function renderPostsMarkdown(posts: RednotePost[]) {
