@@ -11,11 +11,13 @@ import {
   type RednoteSession,
 } from './checkLogin.ts';
 import { getFeedDetails } from './getFeedDetail.ts';
+import { findPersistedPostUrlByRecordId, initializeRednoteDatabase } from './persistence.ts';
 
 export type InteractAction = 'like' | 'collect' | 'comment';
 
 export type InteractCliValues = {
   instance?: string;
+  id?: string;
   url?: string;
   like?: boolean;
   collect?: boolean;
@@ -39,13 +41,14 @@ function printInteractHelp() {
   process.stdout.write(`rednote interact
 
 Usage:
-  npx -y @skills-store/rednote interact [--instance NAME] --url URL [--like] [--collect] [--comment TEXT]
-  node --experimental-strip-types ./scripts/rednote/interact.ts --instance NAME --url URL [--like] [--collect] [--comment TEXT]
-  bun ./scripts/rednote/interact.ts --instance NAME --url URL [--like] [--collect] [--comment TEXT]
+  npx -y @skills-store/rednote interact [--instance NAME] [--id ID | --url URL] [--like] [--collect] [--comment TEXT]
+  node --experimental-strip-types ./scripts/rednote/interact.ts [--instance NAME] [--id ID | --url URL] [--like] [--collect] [--comment TEXT]
+  bun ./scripts/rednote/interact.ts [--instance NAME] [--id ID | --url URL] [--like] [--collect] [--comment TEXT]
 
 Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
-  --url URL         Required. Xiaohongshu explore url
+  --id ID           Optional. Database record id from home/search output
+  --url URL         Optional. Xiaohongshu explore url
   --like            Optional. Perform like
   --collect         Optional. Perform collect
   --comment TEXT    Optional. Post comment content
@@ -60,6 +63,7 @@ export function parseInteractCliArgs(argv: string[]): InteractCliValues {
     strict: false,
     options: {
       instance: { type: 'string' },
+      id: { type: 'string' },
       url: { type: 'string' },
       like: { type: 'boolean' },
       collect: { type: 'boolean' },
@@ -74,6 +78,7 @@ export function parseInteractCliArgs(argv: string[]): InteractCliValues {
 
   return {
     instance: values.instance,
+    id: values.id,
     url: values.url,
     like: values.like,
     collect: values.collect,
@@ -313,8 +318,8 @@ export async function interactWithFeed(
   const page = await getOrCreateXiaohongshuPage(session);
   await waitForInteractContainer(page);
 
-  let liked = detailItem.note.interactInfo.liked === true;
-  let collected = detailItem.note.interactInfo.collected === true;
+  let liked = detailItem.note.liked === true;
+  let collected = detailItem.note.collected === true;
   const messages: string[] = [];
 
   for (const action of actions) {
@@ -345,19 +350,40 @@ export async function interactWithFeed(
   };
 }
 
+async function resolveInteractUrl(values: InteractCliValues, instanceName?: string) {
+  if (values.id) {
+    if (!instanceName) {
+      throw new Error('The --id option requires an instance-backed session.');
+    }
+
+    const url = await findPersistedPostUrlByRecordId(instanceName, ensureNonEmpty(values.id, '--id'));
+    if (!url) {
+      throw new Error(`No saved post url found for id: ${values.id}`);
+    }
+    return url;
+  }
+
+  if (values.url) {
+    return ensureNonEmpty(values.url, '--url');
+  }
+
+  throw new Error('Missing required option: --id or --url');
+}
+
 export async function runInteractCommand(values: InteractCliValues = {}) {
   if (values.help) {
     printInteractHelp();
     return;
   }
 
-  const url = ensureNonEmpty(values.url, '--url');
   const { actions, commentContent } = resolveInteractActions(values);
+  await initializeRednoteDatabase();
   const target = resolveStatusTarget(values.instance);
   const session = await createRednoteSession(target);
 
   try {
     await ensureRednoteLoggedIn(target, `performing ${actions.join(', ')} interact`, session);
+    const url = await resolveInteractUrl(values, target.instanceName);
     const result = await interactWithFeed(session, url, actions, commentContent);
     printJson(result);
   } finally {

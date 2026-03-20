@@ -13,7 +13,7 @@ Commands:
   check-login [--instance NAME]
   login [--instance NAME]
   publish [--instance NAME]
-  interact [--instance NAME] --url URL [--like] [--collect] [--comment TEXT]
+  interact [--instance NAME] [--id ID | --url URL] [--like] [--collect] [--comment TEXT]
   home [--instance NAME] [--format md|json] [--save [PATH]]
   search [--instance NAME] --keyword TEXT [--format md|json] [--save [PATH]]
   get-feed-detail [--instance NAME] --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
@@ -27,7 +27,7 @@ Examples:
   npx -y @skills-store/rednote status --instance seller-main
   npx -y @skills-store/rednote login --instance seller-main
   npx -y @skills-store/rednote publish --instance seller-main --type video --video ./note.mp4 --title "Video title" --content "Video description"
-  npx -y @skills-store/rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "Great post"
+  npx -y @skills-store/rednote interact --instance seller-main --id NOTE_ID --like --collect --comment "Great post"
   npx -y @skills-store/rednote home --instance seller-main --format md --save
   npx -y @skills-store/rednote search --instance seller-main --keyword skincare --format json --save ./output/search.json
   npx -y @skills-store/rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --comments 100 --format json --save ./output/feed-detail.json

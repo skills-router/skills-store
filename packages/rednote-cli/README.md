@@ -36,10 +36,10 @@ For most tasks, run commands in this order:
 rednote env
 rednote browser create --name seller-main --browser chrome --port 9222
 rednote browser connect --instance seller-main
-rednote login --instance seller-main
-rednote status --instance seller-main
-rednote search --instance seller-main --keyword 护肤
-rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "写得真好"
+rednote login
+rednote status
+rednote search --keyword 护肤
+rednote interact --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "写得真好"
 ```
 
 ## Commands
@@ -68,7 +68,7 @@ Use `env` first when checking installation, runtime info, or storage paths.
 ### `status`
 
 ```bash
-rednote status --instance seller-main
+rednote status
 ```
 
 Use `status` to confirm whether an instance exists, is running, and appears logged in.
@@ -76,7 +76,7 @@ Use `status` to confirm whether an instance exists, is running, and appears logg
 ### `check-login`
 
 ```bash
-rednote check-login --instance seller-main
+rednote check-login
 ```
 
 Use `check-login` when you only want to verify whether the session is still valid.
@@ -84,7 +84,7 @@ Use `check-login` when you only want to verify whether the session is still vali
 ### `login`
 
 ```bash
-rednote login --instance seller-main
+rednote login
 ```
 
 Use `login` after `browser connect` if the instance is not authenticated yet.
@@ -92,7 +92,7 @@ Use `login` after `browser connect` if the instance is not authenticated yet.
 ### `home`
 
 ```bash
-rednote home --instance seller-main --format md --save
+rednote home --format md --save
 ```
 
 Use `home` when you want the current home feed and optionally want to save it to disk.
@@ -103,6 +103,10 @@ The terminal output always uses the compact summary format below, even when `--f
 id=<database nanoid>
 title=<post title>
 like=<liked count>
+
+id=...
+title=...
+like=...
 ```
 
 Captured home feed posts are upserted into `~/.skills-router/rednote/main.db` (the same path returned by `rednote env`). They are stored in the `rednote_posts` table, and the printed `id` is that table's `nanoid(16)` primary key.
@@ -110,8 +114,8 @@ Captured home feed posts are upserted into `~/.skills-router/rednote/main.db` (t
 ### `search`
 
 ```bash
-rednote search --instance seller-main --keyword 护肤
-rednote search --instance seller-main --keyword 护肤 --format json --save ./output/search.jsonl
+rednote search --keyword 护肤
+rednote search --keyword 护肤 --format json --save ./output/search.jsonl
 ```
 
 Use `search` for keyword-based note lookup.
@@ -129,8 +133,8 @@ Captured search results are also upserted into `~/.skills-router/rednote/main.db
 ### `get-feed-detail`
 
 ```bash
-rednote get-feed-detail --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
-rednote get-feed-detail --instance seller-main --id AynQ7_utnNiW1Ytk
+rednote get-feed-detail --id <nanoid>
+rednote get-feed-detail --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy"
 ```
 
 Use `get-feed-detail` when you already have a Xiaohongshu note URL, or when you have a database `id` returned by `home` or `search`. With `--id`, the CLI looks up the saved URL from `~/.skills-router/rednote/main.db` and then navigates with that raw URL.
@@ -140,7 +144,7 @@ Captured note details and comments are also upserted into `~/.skills-router/redn
 ### `get-profile`
 
 ```bash
-rednote get-profile --instance seller-main --id USER_ID
+rednote get-profile --id USER_ID
 ```
 
 Use `get-profile` when you want author or account profile information.
@@ -149,8 +153,8 @@ Use `get-profile` when you want author or account profile information.
 ### `interact`
 
 ```bash
-rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect
-rednote interact --instance seller-main --url "https://www.xiaohongshu.com/explore/xxx?xsec_token=yyy" --like --collect --comment "写得真好"
+rednote interact --id <nanoid> --like --collect
+rednote interact --id <nanoid> --like --collect --comment "写得真好"
 ```
 
 Use `interact` when you want the single entrypoint for note operations such as like, collect, and comment in one command. Use `--comment TEXT` for replies; there is no standalone `comment` command.
@@ -167,318 +171,6 @@ Use `interact` when you want the single entrypoint for note operations such as l
 - `--id` is required for `get-profile`.
 - `--url` is required for `interact`; at least one of `--like`, `--collect`, or `--comment TEXT` must be provided.
 - replies are sent with `interact --comment TEXT`.
-
-## JSON success shapes
-
-Use these shapes as the success model when a command returns JSON.
-
-### Shared note item
-
-`home`, `search`, and `profile.notes` share the normalized `RednotePost` shape:
-
-```json
-{
-  "id": "string",
-  "modelType": "string",
-  "xsecToken": "string|null",
-  "url": "string",
-  "noteCard": {
-    "type": "string|null",
-    "displayTitle": "string|null",
-    "cover": {
-      "urlDefault": "string|null",
-      "urlPre": "string|null",
-      "url": "string|null",
-      "fileId": "string|null",
-      "width": "number|null",
-      "height": "number|null",
-      "infoList": [{ "imageScene": "string|null", "url": "string|null" }]
-    },
-    "user": {
-      "userId": "string|null",
-      "nickname": "string|null",
-      "nickName": "string|null",
-      "avatar": "string|null",
-      "xsecToken": "string|null"
-    },
-    "interactInfo": {
-      "liked": "boolean",
-      "likedCount": "string|null",
-      "commentCount": "string|null",
-      "collectedCount": "string|null",
-      "sharedCount": "string|null"
-    },
-    "cornerTagInfo": [{ "type": "string|null", "text": "string|null" }],
-    "imageList": [{ "width": "number|null", "height": "number|null", "infoList": [{ "imageScene": "string|null", "url": "string|null" }] }],
-    "video": { "duration": "number|null" }
-  }
-}
-```
-
-### `env --format json`
-
-`env` is the main exception: it returns a raw environment object instead of `{ "ok": true, ... }`.
-
-```json
-{
-  "packageRoot": "string",
-  "homeDir": "string",
-  "platform": "string",
-  "nodeVersion": "string",
-  "storageHome": "string",
-  "storageRoot": "string",
-  "databasePath": "string",
-  "instancesDir": "string",
-  "instanceStorePath": "string",
-  "legacyPackageInstancesDir": "string"
-}
-```
-
-### Browser commands
-
-`browser list`:
-
-```json
-{
-  "lastConnect": { "scope": "default|custom", "name": "string", "browser": "chrome|edge|chromium|brave" } | null,
-  "instances": [{
-    "type": "chrome|edge|chromium|brave",
-    "name": "string",
-    "executablePath": "string",
-    "userDataDir": "string",
-    "exists": true,
-    "inUse": false,
-    "pid": "number|null",
-    "lockFiles": ["string"],
-    "matchedProcess": { "pid": "number", "name": "string", "cmdline": "string" } | null,
-    "staleLock": false,
-    "remotePort": "number|null",
-    "scope": "default|custom",
-    "instanceName": "string",
-    "createdAt": "string|null",
-    "lastConnect": false
-  }]
-}
-```
-
-`browser create`:
-
-```json
-{
-  "ok": true,
-  "instance": {
-    "name": "string",
-    "browser": "chrome|edge|chromium|brave",
-    "userDataDir": "string",
-    "createdAt": "string",
-    "remoteDebuggingPort": "number|undefined"
-  }
-}
-```
-
-`browser connect`:
-
-```json
-{
-  "ok": true,
-  "type": "chrome|edge|chromium|brave",
-  "executablePath": "string",
-  "userDataDir": "string",
-  "remoteDebuggingPort": "number",
-  "wsUrl": "string",
-  "pid": "number|null"
-}
-```
-
-`browser remove`:
-
-```json
-{
-  "ok": true,
-  "removedInstance": {
-    "name": "string",
-    "browser": "chrome|edge|chromium|brave",
-    "userDataDir": "string",
-    "createdAt": "string",
-    "remoteDebuggingPort": "number|undefined"
-  },
-  "removedDir": true,
-  "closedPids": ["number"]
-}
-```
-
-### Session and account commands
-
-`status`:
-
-```json
-{
-  "ok": true,
-  "instance": {
-    "scope": "default|custom",
-    "name": "string",
-    "browser": "chrome|edge|chromium|brave",
-    "source": "argument|last-connect|single-instance",
-    "status": "running|stopped|missing|stale-lock",
-    "exists": true,
-    "inUse": false,
-    "pid": "number|null",
-    "remotePort": "number|null",
-    "userDataDir": "string",
-    "createdAt": "string|null",
-    "lastConnect": false
-  },
-  "rednote": {
-    "loginStatus": "logged-in|logged-out|unknown",
-    "lastLoginAt": "string|null"
-  }
-}
-```
-
-`check-login`:
-
-```json
-{
-  "ok": true,
-  "rednote": {
-    "loginStatus": "logged-in|logged-out|unknown",
-    "lastLoginAt": "string|null",
-    "needLogin": false,
-    "checkedAt": "string"
-  }
-}
-```
-
-`login`:
-
-```json
-{
-  "ok": true,
-  "rednote": {
-    "loginClicked": true,
-    "pageUrl": "string",
-    "waitingForPhoneLogin": true,
-    "qrCodePath": "string|null",
-    "message": "string"
-  }
-}
-```
-
-### Feed and profile commands
-
-`home` stdout (both `md` and `json`):
-
-```text
-id=<database nanoid>
-title=<post title>
-like=<liked count>
-```
-
-`home --format json --save PATH` writes the raw `RednotePost[]` array to disk, while stdout still prints the summary list above.
-
-`search` stdout (both `md` and `json`):
-
-```text
-id=<database nanoid>
-title=<post title>
-like=<liked count>
-```
-
-`search --format json --save PATH` writes the raw `RednotePost[]` array to disk, while stdout still prints the summary list above.
-
-`get-feed-detail --format json`:
-
-```json
-{
-  "ok": true,
-  "detail": {
-    "fetchedAt": "string",
-    "total": "number",
-    "items": [{
-      "url": "string",
-      "note": {
-        "noteId": "string|null",
-        "title": "string|null",
-        "desc": "string|null",
-        "type": "string|null",
-        "interactInfo": {
-          "liked": "boolean|null",
-          "likedCount": "string|null",
-          "commentCount": "string|null",
-          "collected": "boolean|null",
-          "collectedCount": "string|null",
-          "shareCount": "string|null",
-          "followed": "boolean|null"
-        },
-        "tagList": [{ "name": "string|null" }],
-        "imageList": [{ "urlDefault": "string|null", "urlPre": "string|null", "width": "number|null", "height": "number|null" }],
-        "video": { "url": "string|null", "raw": "unknown" } | null,
-        "raw": "unknown"
-      },
-      "comments": [{
-        "id": "string|null",
-        "content": "string|null",
-        "userId": "string|null",
-        "nickname": "string|null",
-        "likedCount": "string|null",
-        "subCommentCount": "number|null",
-        "raw": "unknown"
-      }]
-    }]
-  }
-}
-```
-
-`get-profile --format json`:
-
-```json
-{
-  "ok": true,
-  "profile": {
-    "userId": "string",
-    "url": "string",
-    "fetchedAt": "string",
-    "user": {
-      "userId": "string|null",
-      "nickname": "string|null",
-      "desc": "string|null",
-      "avatar": "string|null",
-      "ipLocation": "string|null",
-      "gender": "string|null",
-      "follows": "string|number|null",
-      "fans": "string|number|null",
-      "interaction": "string|number|null",
-      "tags": ["string"],
-      "raw": "unknown"
-    },
-    "notes": ["RednotePost"],
-    "raw": {
-      "userPageData": "unknown",
-      "notes": "unknown"
-    }
-  }
-}
-```
-
-### Action commands
-
-`publish`:
-
-```json
-{
-  "ok": true,
-  "message": "string"
-}
-```
-
-`interact`:
-
-```json
-{
-  "ok": true,
-  "message": "string"
-}
-```
 
 ## Storage
 
