@@ -18,6 +18,7 @@ Commands:
   search [--instance NAME] --keyword TEXT [--format md|json] [--save [PATH]]
   get-feed-detail [--instance NAME] --url URL [--url URL] [--comments [COUNT]] [--format md|json] [--save PATH]
   get-profile [--instance NAME] --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
+  get-my-profile [--instance NAME] [--mode profile|notes] [--format md|json] [--save PATH]
 
 Examples:
   npx -y @skills-store/rednote browser list
@@ -127,6 +128,12 @@ export async function runRednoteCli(argv: string[] = process.argv.slice(2)) {
   if (command === 'get-profile') {
     const { parseGetProfileCliArgs, runGetProfileCommand } = await import('./getProfile.ts');
     await runGetProfileCommand(parseGetProfileCliArgs(commandArgv));
+    return;
+  }
+
+  if (command === 'get-my-profile') {
+    const { parseGetMyProfileCliArgs, runGetMyProfileCommand } = await import('./getMyProfile.ts');
+    await runGetMyProfileCommand(parseGetMyProfileCliArgs(commandArgv));
     return;
   }
 

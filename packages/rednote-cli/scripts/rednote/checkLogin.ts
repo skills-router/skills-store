@@ -107,9 +107,15 @@ export async function checkRednoteLogin(
     await page.waitForTimeout(2_000);
     const needLogin = (await page.locator('#login-btn').count()) > 0;
     debugLog('checkLogin', 'login state checked', { pageUrl: page.url(), needLogin });
+    let userId;
+    if(!needLogin){
+      const locator = page.locator("li.user a").first();
+      userId = (await locator.getAttribute("href"))?.split('/').pop();
+    }
 
     return {
       loginStatus: needLogin ? 'logged-out' : 'logged-in',
+      userId: userId ?? null,
       lastLoginAt: null,
       needLogin,
       checkedAt: new Date().toISOString(),

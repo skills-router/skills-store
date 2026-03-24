@@ -16,6 +16,7 @@ import { debugLog, printJson, runCli, stringifyError } from '../utils/browser-cl
 export type RednoteLoginStatus = 'logged-in' | 'logged-out' | 'unknown';
 
 export type RednoteAccountStatus = {
+  userId: string | null;
   loginStatus: RednoteLoginStatus;
   lastLoginAt: string | null;
 };
@@ -88,6 +89,9 @@ Usage:
 Options:
   --instance NAME   Show status for a custom instance or default browser instance
   -h, --help        Show this help
+
+Notes:
+  When called without --instance, it uses the last connected instance from data.json (lastConnect).
 `);
 }
 
@@ -215,6 +219,7 @@ export async function getRednoteStatus(target: RednoteStatusTarget): Promise<Red
       const checked = await checkRednoteLogin(target);
       debugLog('status', 'fallback checkRednoteLogin succeeded', { checked });
       rednote = {
+        userId: checked.userId,
         loginStatus: checked.loginStatus,
         lastLoginAt: checked.lastLoginAt,
       };

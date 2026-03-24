@@ -5,10 +5,12 @@ import { parseArgs } from 'node:util';
 import vm from 'node:vm';
 import type { Page, Response } from 'playwright-core';
 import { runCli } from '../utils/browser-cli.ts';
+import { simulateMouseMove, simulateMouseWheel } from '../utils/mouse-helper.ts';
 import { resolveStatusTarget } from './status.ts';
 import { createRednoteSession, disconnectRednoteSession, ensureRednoteLoggedIn, type RednoteSession } from './checkLogin.ts';
 import type { RednotePost } from './post-types.ts';
 import { ensureJsonSavePath, renderJsonSaveSummary, renderPostsMarkdown, resolveJsonSavePath, writeJsonFile } from './output-format.ts';
+import { persistProfile } from './persistence.ts';
 
 export type ProfileFormat = 'json' | 'md';
 
@@ -19,6 +21,7 @@ export type GetProfileCliValues = {
   id?: string;
   format: ProfileFormat;
   mode: ProfileMode;
+  maxNotes: number;
   savePath?: string;
   help?: boolean;
 };
@@ -67,14 +70,15 @@ function printGetProfileHelp() {
   process.stdout.write(`rednote get-profile
 
 Usage:
-  npx -y @skills-store/rednote get-profile [--instance NAME] --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
-  node --experimental-strip-types ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
-  bun ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--mode profile|notes] [--format md|json] [--save PATH]
+  npx -y @skills-store/rednote get-profile [--instance NAME] --id USER_ID [--mode profile|notes] [--max-notes N] [--format md|json] [--save PATH]
+  node --experimental-strip-types ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--mode profile|notes] [--max-notes N] [--format md|json] [--save PATH]
+  bun ./scripts/rednote/getProfile.ts --instance NAME --id USER_ID [--mode profile|notes] [--max-notes N] [--format md|json] [--save PATH]
 
 Options:
   --instance NAME   Optional. Defaults to the saved lastConnect instance
   --id USER_ID      Required. Xiaohongshu profile user id
   --mode MODE       Optional. profile | notes. Default: profile
+  --max-notes N     Optional. Max notes to fetch by scrolling. Default: 100
   --format FORMAT   Output format: md | json. Default: md
   --save PATH       Required when --format json is used. Saves only the selected mode data as JSON
   -h, --help        Show this help
@@ -91,6 +95,7 @@ export function parseGetProfileCliArgs(argv: string[]): GetProfileCliValues {
       id: { type: 'string' },
       format: { type: 'string' },
       mode: { type: 'string' },
+      'max-notes': { type: 'string' },
       save: { type: 'string' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -110,11 +115,18 @@ export function parseGetProfileCliArgs(argv: string[]): GetProfileCliValues {
     throw new Error(`Invalid --mode value: ${String(values.mode)}`);
   }
 
+  const maxNotesValue = values['max-notes'] ?? '100';
+  const maxNotes = parseInt(maxNotesValue, 10);
+  if (isNaN(maxNotes) || maxNotes < 1) {
+    throw new Error(`Invalid --max-notes value: ${maxNotesValue}`);
+  }
+
   return {
     instance: values.instance,
     id: values.id,
     format,
     mode,
+    maxNotes,
     savePath: values.save,
     help: values.help,
   };
@@ -306,29 +318,92 @@ function renderProfileUserMarkdown(result: RednoteProfileResult) {
   return `${lines.join('\n')}\n`;
 }
 
-function selectProfileOutput(result: RednoteProfileResult, mode: ProfileMode) {
+export function selectProfileOutput(result: RednoteProfileResult, mode: ProfileMode) {
   return mode === 'notes' ? result.profile.notes : result.profile.user;
 }
 
-function renderProfileMarkdown(result: RednoteProfileResult, mode: ProfileMode) {
+export function renderProfileMarkdown(result: RednoteProfileResult, mode: ProfileMode) {
   if (mode === 'notes') {
     return renderPostsMarkdown(result.profile.notes);
   }
 
   return renderProfileUserMarkdown(result);
 }
-async function captureProfile(page: Page, targetUrl: string) {
+
+const NOTES_CONTAINER_SELECTOR = '.feeds-tab-container';
+const NOTES_SCROLL_TIMEOUT_MS = 60_000;
+const NOTES_SCROLL_IDLE_LIMIT = 4;
+
+async function scrollNotesContainer(page: Page, maxNotes: number, getNoteCount: () => number) {
+  const container = page.locator(NOTES_CONTAINER_SELECTOR).first();
+  const visible = await container.isVisible().catch(() => false);
+  if (!visible) {
+    return;
+  }
+
+  await container.scrollIntoViewIfNeeded().catch(() => {});
+  await simulateMouseMove(page, { locator: container, settleMs: 100 }).catch(() => {});
+
+  const getMetrics = async () => await container.evaluate((element) => {
+    const htmlElement = element as HTMLElement;
+    const atBottom = htmlElement.scrollTop + htmlElement.clientHeight >= htmlElement.scrollHeight - 8;
+    return {
+      scrollTop: htmlElement.scrollTop,
+      scrollHeight: htmlElement.scrollHeight,
+      clientHeight: htmlElement.clientHeight,
+      atBottom,
+    };
+  }).catch(() => null);
+
+  const deadline = Date.now() + NOTES_SCROLL_TIMEOUT_MS;
+  let idleRounds = 0;
+
+  while (Date.now() < deadline) {
+    if (getNoteCount() >= maxNotes) {
+      return;
+    }
+
+    const beforeMetrics = await getMetrics();
+    if (!beforeMetrics) {
+      return;
+    }
+
+    const beforeCount = getNoteCount();
+    const delta = Math.max(Math.floor(beforeMetrics.clientHeight * 0.85), 480);
+    await simulateMouseWheel(page, { locator: container, deltaY: delta, moveBeforeScroll: false, settleMs: 900 }).catch(() => {});
+
+    const afterMetrics = await getMetrics();
+    await page.waitForTimeout(400);
+    const afterCount = getNoteCount();
+
+    const countChanged = afterCount > beforeCount;
+    const scrollMoved = Boolean(afterMetrics) && afterMetrics.scrollTop > beforeMetrics.scrollTop;
+    const reachedBottom = Boolean(afterMetrics?.atBottom);
+
+    if (countChanged || scrollMoved) {
+      idleRounds = 0;
+      continue;
+    }
+
+    idleRounds += 1;
+    if ((reachedBottom && idleRounds >= 2) || idleRounds >= NOTES_SCROLL_IDLE_LIMIT) {
+      return;
+    }
+  }
+}
+
+async function captureProfile(page: Page, targetUrl: string, maxNotes: number) {
   let userPageData: any = null;
-  let notes: any = null;
+  const notesMap = new Map<string, any>();
 
   const handleResponse = async (response: Response) => {
     try {
       const url = new URL(response.url());
-      if (response.status() !== 200 || !url.href.includes('/user/profile/')) {
+      if (response.status() !== 200 || !(url.href.includes('/user/profile/') || url.href.includes('/api/sns/web/v1/user_posted'))) {
         return;
       }
-
-      const html = await response.text();
+      if(url.href.includes('/user/profile/')){
+        const html = await response.text();
       const $ = cheerio.load(html);
 
       $('script').each((_, element) => {
@@ -343,41 +418,85 @@ async function captureProfile(page: Page, targetUrl: string) {
         vm.runInContext(`var info = ${scriptText}`, sandbox);
         userPageData = sandbox.info?.user?.userPageData ?? userPageData;
 
-        notes = sandbox.info?.user?.notes ?? notes;
+        const notesData = sandbox.info?.user?.notes;
+        if (Array.isArray(notesData)) {
+          for (const note of notesData) {
+            if(!Array.isArray(notesData)){
+              const noteId = note?.id ?? note?.noteId ?? note?.note_id;
+              if (noteId && !notesMap.has(noteId)) {
+                notesMap.set(noteId, note);
+              }
+            }else{
+              for (const _note of note) {
+                const noteId = _note?.id ?? _note?.noteId ?? _note?.note_id;
+              if (noteId && !notesMap.has(noteId)) {
+                notesMap.set(noteId, _note);
+              }
+              }
+
+            }
+            
+          }
+        }
       });
+      }
+
+      if(url.href.includes('/api/sns/web/v1/user_posted')){
+        const body = await response.json();
+        if(body.code == 0 && body.data?.notes){
+          if (Array.isArray(body.data?.notes)) {
+            for (const note of body.data?.notes) {
+              const noteId = note?.id ?? note?.noteId ?? note?.note_id;
+              if (noteId && !notesMap.has(noteId)) {
+                notesMap.set(noteId, note);
+              }
+            }
+          }
+        }
+      }
     } catch {
     }
   };
 
   page.on('response', handleResponse);
   try {
-    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+    if(targetUrl !== page.url()){
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+    }else{
+      // await page.reload({ waitUntil: 'domcontentloaded' });
+    }
+    
 
     const deadline = Date.now() + 15_000;
     while (Date.now() < deadline) {
-      if (userPageData || notes) {
+      if (userPageData || notesMap.size > 0) {
         break;
       }
       await page.waitForTimeout(200);
     }
 
-    if (!userPageData && !notes) {
+    if (!userPageData && notesMap.size === 0) {
       throw new Error(`Failed to capture profile detail: ${targetUrl}`);
+    }
+
+    // Scroll to load more notes if needed
+    if (notesMap.size < maxNotes) {
+      await scrollNotesContainer(page, maxNotes, () => notesMap.size);
     }
 
     return {
       userPageData,
-      notes,
+      notes: [...notesMap.values()],
     };
   } finally {
     page.off('response', handleResponse);
   }
 }
 
-export async function getProfile(session: RednoteSession, url: string, userId: string): Promise<RednoteProfileResult> {
+export async function getProfile(session: RednoteSession, url: string, userId: string, maxNotes = 100): Promise<RednoteProfileResult> {
   validateProfileUrl(url);
   const page = await getOrCreateXiaohongshuPage(session);
-  const captured = await captureProfile(page, url);
+  const captured = await captureProfile(page, url, maxNotes);
 
   return {
     ok: true,
@@ -405,7 +524,7 @@ function writeProfileOutput(result: RednoteProfileResult, values: GetProfileCliV
   process.stdout.write(renderProfileMarkdown(result, values.mode));
 }
 
-export async function runGetProfileCommand(values: GetProfileCliValues = { format: 'md', mode: 'profile' }) {
+export async function runGetProfileCommand(values: GetProfileCliValues = { format: 'md', mode: 'profile', maxNotes: 100 }) {
   if (values.help) {
     printGetProfileHelp();
     return;
@@ -423,7 +542,14 @@ export async function runGetProfileCommand(values: GetProfileCliValues = { forma
 
   try {
     await ensureRednoteLoggedIn(target, 'fetching profile', session);
-    const result = await getProfile(session, buildProfileUrl(normalizedUserId), normalizedUserId);
+    const result = await getProfile(session, buildProfileUrl(normalizedUserId), normalizedUserId, values.maxNotes);
+
+    // Persist profile and notes to database
+    await persistProfile({
+      instanceName: target.instanceName,
+      result,
+    });
+
     writeProfileOutput(result, values);
   } finally {
     await disconnectRednoteSession(session);

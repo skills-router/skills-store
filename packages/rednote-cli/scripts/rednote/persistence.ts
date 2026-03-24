@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid';
 import { DataSource, EntitySchema, In } from 'typeorm';
 import { REDNOTE_DATABASE_PATH, ensureDir } from '../utils/browser-core.ts';
 import type { RednoteDetailNote } from './getFeedDetail.ts';
+import type { RednoteProfileResult } from './getProfile.ts';
 import type { RednotePost } from './post-types.ts';
 
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
@@ -144,6 +145,51 @@ const rednotePostCommentSchema = new EntitySchema<RednotePostCommentRecord>({
   ],
 });
 
+type RednoteProfileRecord = {
+  id: string;
+  userId: string;
+  nickname: string | null;
+  desc: string | null;
+  avatar: string | null;
+  ipLocation: string | null;
+  gender: string | null;
+  follows: string | null;
+  fans: string | null;
+  interaction: string | null;
+  tags: string[];
+  fetchedAt: Date;
+  instanceName: string;
+  raw: JsonValue;
+  createdAt: Date;
+};
+
+const rednoteProfileSchema = new EntitySchema<RednoteProfileRecord>({
+  name: 'RednoteProfileRecord',
+  tableName: 'rednote_profiles',
+  columns: {
+    id: { type: String, primary: true, length: 16 },
+    userId: { name: 'userid', type: String },
+    nickname: { type: String, nullable: true },
+    desc: { type: 'text', nullable: true },
+    avatar: { type: String, nullable: true },
+    ipLocation: { name: 'ip_location', type: String, nullable: true },
+    gender: { type: String, nullable: true },
+    follows: { type: String, nullable: true },
+    fans: { type: String, nullable: true },
+    interaction: { type: String, nullable: true },
+    tags: { type: 'simple-json', nullable: true },
+    fetchedAt: { name: 'fetched_at', type: Date },
+    instanceName: { name: 'instance_name', type: String },
+    raw: { type: 'simple-json', nullable: true },
+    createdAt: { name: 'created_at', type: Date, createDate: true },
+  },
+  indices: [
+    { name: 'IDX_rednote_profiles_userid_instance', columns: ['userId', 'instanceName'] },
+    { name: 'IDX_rednote_profiles_fetched_at', columns: ['fetchedAt'] },
+    { name: 'IDX_rednote_profiles_instance', columns: ['instanceName'] },
+  ],
+});
+
 let dataSourcePromise: Promise<DataSource> | null = null;
 
 function createRecordId() {
@@ -234,7 +280,7 @@ async function initializeDataSource() {
   const dataSource = new DataSource({
     type: 'better-sqlite3',
     database: REDNOTE_DATABASE_PATH,
-    entities: [rednotePostSchema, rednotePostDetailSchema, rednotePostCommentSchema],
+    entities: [rednotePostSchema, rednotePostDetailSchema, rednotePostCommentSchema, rednoteProfileSchema],
     synchronize: true,
     logging: false,
     prepareDatabase: (database) => {
@@ -472,4 +518,128 @@ export async function findPersistedPostUrlByRecordId(instanceName: string, id: s
   });
 
   return row?.url ?? null;
+}
+
+export type PersistProfileInput = {
+  instanceName: string;
+  result: RednoteProfileResult;
+};
+
+export async function persistProfile(input: PersistProfileInput): Promise<void> {
+  const { instanceName, result } = input;
+  const { profile } = result;
+  const { user, notes, userId, url, fetchedAt } = profile;
+
+  const dataSource = await initializeRednoteDatabase();
+
+  await dataSource.transaction(async (manager) => {
+    const profileRepository = manager.getRepository(rednoteProfileSchema);
+    const postRepository = manager.getRepository(rednotePostSchema);
+
+    // Insert new profile record (always insert, never update - for history tracking)
+    await profileRepository.save(profileRepository.create({
+      id: createRecordId(),
+      userId,
+      nickname: user.nickname,
+      desc: user.desc,
+      avatar: user.avatar,
+      ipLocation: user.ipLocation,
+      gender: user.gender,
+      follows: toCountString(user.follows),
+      fans: toCountString(user.fans),
+      interaction: toCountString(user.interaction),
+      tags: user.tags,
+      fetchedAt: new Date(fetchedAt),
+      instanceName,
+      raw: user,
+    }));
+
+    // Persist notes (upsert)
+    if (notes.length > 0) {
+      const noteIds = uniqueStrings(notes.map((note) => note.id));
+      const existingRows = noteIds.length > 0
+        ? await postRepository.find({
+            where: {
+              instanceName,
+              noteId: In(noteIds),
+            },
+          })
+        : [];
+      const existingMap = new Map(existingRows.map((row) => [row.noteId, row]));
+
+      const entities = notes.map((post) => {
+        const existing = existingMap.get(post.id);
+        const image = extractPrimaryImage(post);
+        const authorNickname = firstNonEmpty(post.noteCard.user.nickname, post.noteCard.user.nickName);
+        return postRepository.create({
+          id: existing?.id ?? createRecordId(),
+          noteId: post.id,
+          title: coalesceValue(post.noteCard.displayTitle, existing?.title),
+          url: coalesceValue(post.url, existing?.url),
+          image: coalesceValue(image, existing?.image),
+          likeCount: coalesceValue(toCountString(post.noteCard.interactInfo.likedCount), existing?.likeCount),
+          commentCount: coalesceValue(toCountString(post.noteCard.interactInfo.commentCount), existing?.commentCount),
+          collectedCount: coalesceValue(toCountString(post.noteCard.interactInfo.collectedCount), existing?.collectedCount),
+          sharedCount: coalesceValue(toCountString(post.noteCard.interactInfo.sharedCount), existing?.sharedCount),
+          authorId: coalesceValue(post.noteCard.user.userId, existing?.authorId),
+          authorNickname: coalesceValue(authorNickname, existing?.authorNickname),
+          modelType: coalesceValue(post.modelType, existing?.modelType),
+          xsecToken: coalesceValue(post.xsecToken, existing?.xsecToken),
+          instanceName,
+          raw: post,
+          ...(existing?.createdAt ? { createdAt: existing.createdAt } : {}),
+        });
+      });
+
+      await postRepository.save(entities);
+    }
+  });
+}
+
+export type ProfileHistoryRecord = {
+  id: string;
+  userId: string;
+  nickname: string | null;
+  desc: string | null;
+  avatar: string | null;
+  ipLocation: string | null;
+  gender: string | null;
+  follows: string | null;
+  fans: string | null;
+  interaction: string | null;
+  tags: string[];
+  fetchedAt: Date;
+  instanceName: string;
+  createdAt: Date;
+};
+
+export async function getProfileHistory(
+  instanceName: string,
+  userId: string,
+  options?: { limit?: number },
+): Promise<ProfileHistoryRecord[]> {
+  const dataSource = await initializeRednoteDatabase();
+  const repository = dataSource.getRepository(rednoteProfileSchema);
+  const rows = await repository.find({
+    where: { instanceName, userId },
+    order: { fetchedAt: 'DESC' },
+    take: options?.limit ?? 100,
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    nickname: row.nickname,
+    desc: row.desc,
+    avatar: row.avatar,
+    ipLocation: row.ipLocation,
+    gender: row.gender,
+    follows: row.follows,
+    fans: row.fans,
+    interaction: row.interaction,
+    tags: row.tags,
+    fetchedAt: row.fetchedAt,
+    instanceName: row.instanceName,
+    createdAt: row.createdAt,
+  }));
 }

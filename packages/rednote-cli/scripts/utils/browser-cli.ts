@@ -108,6 +108,7 @@ Usage:
   bun ./scripts/browser/connect-browser.ts [--instance NAME] [--browser chrome|edge|chromium|brave] [--user-data-dir PATH] [--force] [--port 9222]
 
 Notes:
+  When called without --instance, it uses the last connected instance from data.json (lastConnect).
   When using --instance without --port, the stored instance port from data.json is used.
   If no stored port exists yet, a random free port is assigned and saved for next time.
 `);

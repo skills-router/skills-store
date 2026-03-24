@@ -16,13 +16,11 @@ export type LoginCliValues = {
 
 export type LoginResult = {
   ok: true;
-  rednote: {
-    loginClicked: boolean;
-    pageUrl: string;
-    waitingForPhoneLogin: boolean;
-    qrCodePath: string | null;
-    message: string;
-  };
+  loginClicked: boolean;
+  pageUrl: string;
+  waitingForPhoneLogin: boolean;
+  qrCodePath: string | null;
+  message: string;
 };
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -134,13 +132,11 @@ export async function openRednoteLogin(target: RednoteStatusTarget, session: Red
   if (!rednoteStatus.needLogin) {
     return {
       ok: true,
-      rednote: {
-        loginClicked: false,
-        pageUrl: session.page.url(),
-        waitingForPhoneLogin: false,
-        qrCodePath: null,
-        message: 'The current instance is already logged in. No additional login step is required.',
-      },
+      loginClicked: false,
+      pageUrl: session.page.url(),
+      waitingForPhoneLogin: false,
+      qrCodePath: null,
+      message: 'The current instance is already logged in. No additional login step is required.',
     };
   }
 
@@ -152,13 +148,11 @@ export async function openRednoteLogin(target: RednoteStatusTarget, session: Red
   if (!hasLoginButton) {
     return {
       ok: true,
-      rednote: {
-        loginClicked: false,
-        pageUrl: page.url(),
-        waitingForPhoneLogin: false,
-        qrCodePath: null,
-        message: 'No login button was found. The current instance may already be logged in.',
-      },
+      loginClicked: false,
+      pageUrl: page.url(),
+      waitingForPhoneLogin: false,
+      qrCodePath: null,
+      message: 'No login button was found. The current instance may already be logged in.',
     };
   }
   await loginButton.first().click({ timeout: 2000, force: true });
@@ -167,13 +161,11 @@ export async function openRednoteLogin(target: RednoteStatusTarget, session: Red
 
   return {
     ok: true,
-    rednote: {
-      loginClicked: true,
-      pageUrl: page.url(),
-      waitingForPhoneLogin: true,
-      qrCodePath,
-      message: 'The login button was clicked and the QR code image was exported. Scan the code to finish logging in.',
-    },
+    loginClicked: true,
+    pageUrl: page.url(),
+    waitingForPhoneLogin: true,
+    qrCodePath,
+    message: 'The login button was clicked and the QR code image was exported. Scan the code to finish logging in.',
   };
 }
 

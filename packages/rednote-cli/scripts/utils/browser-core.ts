@@ -91,6 +91,7 @@ export type ConnectBrowserOptions = {
 export type ConnectBrowserResult = {
   ok: true;
   type: BrowserType;
+  instanceName?: string;
   executablePath: string;
   userDataDir: string;
   remoteDebuggingPort: number;

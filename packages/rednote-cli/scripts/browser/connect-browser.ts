@@ -41,57 +41,92 @@ async function resolveBrowserPid(remoteDebuggingPort: number, detectedPid: numbe
 }
 
 export async function resolveConnectOptions(options: ConnectBrowserOptions & { instanceName?: string }) {
-  if (!options.instanceName) {
+  // If instanceName is provided, use it directly
+  if (options.instanceName) {
+    if (options.userDataDir) {
+      throw new Error('Do not combine --instance with --user-data-dir');
+    }
+
+    if (options.browser) {
+      throw new Error('Do not combine --instance with --browser');
+    }
+
+    const store = readInstanceStore();
+    const instanceName = validateInstanceName(options.instanceName);
+    const persisted = store.instances.find((instance) => instance.name === instanceName);
+    if (!persisted) {
+      throw new Error(`Unknown instance: ${instanceName}`);
+    }
+
+    let remoteDebuggingPort = options.remoteDebuggingPort ?? persisted.remoteDebuggingPort;
+    if (!remoteDebuggingPort) {
+      remoteDebuggingPort = await getRandomAvailablePort();
+      updateInstanceRemoteDebuggingPort(instanceName, remoteDebuggingPort);
+    }
+
     return {
-      connectOptions: options,
-      lastConnect:
-        options.userDataDir
-          ? null
-          : {
-              scope: 'default',
-              name: options.browser ?? 'chrome',
-              browser: options.browser ?? 'chrome',
-            } satisfies LastConnectInfo,
+      connectOptions: {
+        ...options,
+        browser: persisted.browser,
+        userDataDir: persisted.userDataDir,
+        remoteDebuggingPort,
+      } satisfies ConnectBrowserOptions,
+      lastConnect: {
+        scope: 'custom',
+        name: persisted.name,
+        browser: persisted.browser,
+      } satisfies LastConnectInfo,
     };
   }
 
-  if (options.userDataDir) {
-    throw new Error('Do not combine --instance with --user-data-dir');
-  }
-
-  if (options.browser) {
-    throw new Error('Do not combine --instance with --browser');
-  }
-
+  // No instanceName provided - check for lastConnect
   const store = readInstanceStore();
-  const instanceName = validateInstanceName(options.instanceName);
-  const persisted = store.instances.find((instance) => instance.name === instanceName);
-  if (!persisted) {
-    throw new Error(`Unknown instance: ${instanceName}`);
+  const lastConnect = store.lastConnect;
+
+  // If lastConnect exists and is a custom instance, use it
+  if (lastConnect && lastConnect.scope === 'custom') {
+    const persisted = store.instances.find((instance) => instance.name === lastConnect.name);
+    if (persisted) {
+      let remoteDebuggingPort = options.remoteDebuggingPort ?? persisted.remoteDebuggingPort;
+      if (!remoteDebuggingPort) {
+        remoteDebuggingPort = await getRandomAvailablePort();
+        updateInstanceRemoteDebuggingPort(lastConnect.name, remoteDebuggingPort);
+      }
+
+      return {
+        connectOptions: {
+          ...options,
+          instanceName: persisted.name,
+          browser: persisted.browser,
+          userDataDir: persisted.userDataDir,
+          remoteDebuggingPort,
+        } satisfies ConnectBrowserOptions & { instanceName?: string },
+        lastConnect: {
+          scope: 'custom',
+          name: persisted.name,
+          browser: persisted.browser,
+        } satisfies LastConnectInfo,
+      };
+    }
   }
 
-  let remoteDebuggingPort = options.remoteDebuggingPort ?? persisted.remoteDebuggingPort;
-  if (!remoteDebuggingPort) {
-    remoteDebuggingPort = await getRandomAvailablePort();
-    updateInstanceRemoteDebuggingPort(instanceName, remoteDebuggingPort);
-  }
-
+  // Fallback to default behavior (use browser option or default to chrome)
   return {
-    connectOptions: {
-      ...options,
-      browser: persisted.browser,
-      userDataDir: persisted.userDataDir,
-      remoteDebuggingPort,
-    } satisfies ConnectBrowserOptions,
-    lastConnect: {
-      scope: 'custom',
-      name: persisted.name,
-      browser: persisted.browser,
-    } satisfies LastConnectInfo,
+    connectOptions: options,
+    lastConnect:
+      options.userDataDir
+        ? null
+        : {
+            scope: 'default',
+            name: options.browser ?? 'chrome',
+            browser: options.browser ?? 'chrome',
+          } satisfies LastConnectInfo,
   };
 }
 
-export async function initBrowser(options: ConnectBrowserOptions = {}): Promise<ConnectBrowserResult> {
+export async function initBrowser(
+  options: ConnectBrowserOptions & { instanceName?: string } = {},
+): Promise<ConnectBrowserResult> {
   debugLog('initBrowser', 'start', { options });
   const browserType = options.browser ?? 'chrome';
   const spec = findSpec(browserType);
@@ -122,6 +157,7 @@ export async function initBrowser(options: ConnectBrowserOptions = {}): Promise<
     debugLog('initBrowser', 'reusing existing ws url', { remoteDebuggingPort, existingWsUrl });
     return {
       ok: true,
+      instanceName: options.instanceName,
       type: spec.type,
       executablePath,
       userDataDir,
@@ -174,6 +210,7 @@ export async function initBrowser(options: ConnectBrowserOptions = {}): Promise<
 
   return {
     ok: true,
+    instanceName: options.instanceName ?? null,
     type: spec.type,
     executablePath,
     userDataDir,
