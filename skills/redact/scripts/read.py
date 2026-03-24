@@ -330,12 +330,13 @@ def page_content_to_dict(page: PageContent) -> dict:
     }
 
 
-def image_content_to_dict(regions: List[TextRegion]) -> dict:
+def image_content_to_dict(data: Tuple[List[TextRegion], List[str]]) -> dict:
     """Convert image OCR result to requested JSON structure."""
-    sorted_regions = sort_regions(regions)
+    regions, markdown_texts = data
+    # sorted_regions = sort_regions(regions[0])
     return {
         "type": "image",
-        "markdown": "\n".join(r.text for r in sorted_regions),
+        "markdown": "\n".join(markdown_texts),
     }
 
 
