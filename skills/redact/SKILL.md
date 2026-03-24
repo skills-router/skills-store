@@ -21,6 +21,7 @@ Privacy redaction toolkit using PPStructureV3 OCR for text detection and replace
 
 | Script | Format | Command |
 |--------|--------|---------|
+| `read.py` | Images / PDF / Word / PowerPoint | `read.py <input> [--info] [--mode json]` |
 | `redact-image.py` | Images (png, jpg, etc.) | `redact-image.py <input> <rules.csv> <output>` |
 | `redact-pdf.py` | PDF | `redact-pdf.py <input> <rules.csv> <output>` |
 | `redact-document.py` | Word (docx, doc) | `redact-document.py <input> <rules.csv> <output>` |
@@ -47,10 +48,51 @@ target_text,replacement_text
 | Images, PDF | Solid color block overlay |
 | Word, PowerPoint | `█` characters (same length as target) |
 
+## Read Features
+
+`read.py` supports:
+
+- Reading text from images, PDF, Word, and PowerPoint files
+- OCR for image files and embedded images
+- Page-aware output for PDF / Word / PowerPoint
+- `--info` structured output:
+  - `<page index="...">`
+  - `<image format='markdown' type='ocr'>...</image>` for OCR text extracted from images
+
+### JSON Output
+
+Document-like files (`pdf`, `docx`, `doc`, `pptx`) output:
+
+```json
+{
+  "type": "pptx",
+  "pages": [
+    {
+      "page_index": 1,
+      "content": [
+        { "type": "text", "text": "..." },
+        { "type": "image", "text": "ocr text..." }
+      ]
+    }
+  ]
+}
+```
+
+Image files output:
+
+```json
+{
+  "type": "image",
+  "content": "..."
+}
+```
+
 ## Features
 
 | Feature | Image | PDF | Document | Presentation |
 |---------|:-----:|:---:|:--------:|:------------:|
+| Read text | ✅ | ✅ | ✅ | ✅ |
+| JSON output | ✅ | ✅ | ✅ | ✅ |
 | Text replacement | ✅ | ✅ | ✅ | ✅ |
 | Solid color mask | ✅ | ✅ | - | - |
 | █ character mask | - | - | ✅ | ✅ |
@@ -66,7 +108,7 @@ target_text,replacement_text
 ./scripts/init-runtime.sh
 
 # Activate
-source scripts/.venv/bin/activate
+source ./.venv/bin/activate
 ```
 
 ## Dependencies
