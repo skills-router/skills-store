@@ -102,7 +102,7 @@ def run_pipeline(pipeline, image_path: Path, remove_images: bool = True) -> Tupl
     """Run PPStructureV3 and export results as JSON."""
     results: List[Any] = []
     markdown_texts: List[str] = []
-
+    markdown_texts_new: List[str] = []
     eprint(f"Processing: {image_path}")
     predictions = pipeline.predict(input=str(image_path))
     for idx, pred in enumerate(predictions):
@@ -111,12 +111,15 @@ def run_pipeline(pipeline, image_path: Path, remove_images: bool = True) -> Tupl
         pred.save_to_json(str(pred_dir))
         markdown_texts.append(pred.markdown['markdown_texts'] if pred.markdown and 'markdown_texts' in pred.markdown else "")
 
+        
         for markdown_text in markdown_texts:
-            markdown_text = re.sub(
-                r'<div\s+style="text-align:\s*center;">\s*<img\s+[^>]*?/>\s*</div>',
+            markdown_text_new = re.sub(
+                r'<div style="text-align: center;"><img src="[^"]*" alt="Image" width="[^"]*" /></div>',
                 '',
                 markdown_text
             )
+            if markdown_text_new.strip() != "":
+                markdown_texts_new.append(markdown_text_new)
 
 
 
@@ -128,7 +131,7 @@ def run_pipeline(pipeline, image_path: Path, remove_images: bool = True) -> Tupl
             f.unlink()
         pred_dir.rmdir()
 
-    return results, markdown_texts
+    return results, markdown_texts_new
 
 
 def normalize_polygon(value: Any) -> Optional[List[Tuple[float, float]]]:
@@ -314,10 +317,12 @@ def page_content_to_dict(page: PageContent) -> dict:
     for _img_id, regions, markdown_texts in page.images:
         sorted_regions = sort_regions(regions)
         image_text = "\n".join(r.text for r in sorted_regions)
-        content.append({
-            "type": "image",
-            "markdown": "\n".join(markdown_texts),
-        })
+        markdown_text = "\n".join([mt for mt in markdown_texts if mt.strip()])
+        if markdown_text.strip():
+            content.append({
+                "type": "image",
+                "markdown": markdown_text,
+            })
 
     return {
         "page_index": page.page_num,
