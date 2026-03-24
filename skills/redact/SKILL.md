@@ -103,12 +103,14 @@ Image files output:
 
 ## Environment Setup
 
-```bash
-# Initialize virtual environment
-./scripts/init-runtime.sh
+使用 [uv](https://docs.astral.sh/uv/) 安装依赖：
 
-# Activate
-source ./.venv/bin/activate
+```bash
+# 进入 skill 目录
+cd skills/redact
+
+# 同步依赖（自动创建虚拟环境并安装）
+uv sync
 ```
 
 ## Dependencies
