@@ -113,6 +113,8 @@ def write_skeleton(out_dir: Path, video: Path, manifest: list[dict[str, object]]
     lines = [
         "# 视频学习稿",
         "",
+        f"![{video.stem}]({video.name})",
+        "",
         f"- 视频文件：`{video.name}`",
         "- 转录文件：`transcript.srt`",
         "",
