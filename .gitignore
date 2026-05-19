@@ -214,3 +214,5 @@ skills-tests/
 
 .npm-cache/
 .tmp/
+
+memory/
