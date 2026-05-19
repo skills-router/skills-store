@@ -143,11 +143,10 @@ When writing, embed key screenshots into the corresponding time-based sections, 
 ```markdown
 # <Video title or topic>
 
-![<title>](relative/path/to/video.mp4)
+<video src="relative/path/to/video.mp4" controls ></video>
 
 - Original video: <URL>
-- Video file: `relative/path/to/video.mp4`
-- Transcript: `transcript.srt`
+- Video file: [<video-title>](relative/path/to/video.mp4)
 - Generated date: YYYY-MM-DD
 
 ## Core Summary
@@ -185,7 +184,7 @@ When writing, embed key screenshots into the corresponding time-based sections, 
 - Write in Chinese unless the user asks otherwise.
 - Convert the transcript into structured learning notes; do not dump a raw transcript.
 - Include screenshot timestamps in captions or nearby text.
-- At the beginning of the Markdown, embed the source video with the same syntax style as an image: `![<title>](relative/path/to/video.mp4)`.
+- At the beginning of the Markdown, embed the source video with the same syntax style as an image: `<video src="relative/path/to/video.mp4" controls ></video>`.
 - Use relative paths for both the source video and screenshots so the Markdown still displays correctly when the folder is moved.
 - Ground all claims in the subtitle content or image content. Use wording such as “possibly” or “appears to” for uncertain visual interpretations.
 - If the video contains code, formulas, financial charts, UI operations, or domain-specific terminology, preserve readable on-screen text as accurately as possible.
