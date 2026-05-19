@@ -1,135 +1,172 @@
 ---
 name: qwen-audio
-description: "High-performance audio library with text-to-speech (TTS) and speech-to-text (STT)."
-version: "0.0.4"
+description: "High-performance audio library with text-to-speech (TTS), speech-to-text (STT), voice design, and voice cloning. Use when Codex needs to transcribe audio, generate speech audio, create reusable voice profiles, or clone a voice from reference audio."
+version: 0.0.5
 ---
 
 # Qwen-Audio
 
 ## Overview
 
-Qwen-Audio is a high-performance audio processing library optimized. It delivers fast, efficient TTS and STT with support for multiple models, languages, and audio formats.
+Qwen-Audio provides local audio capabilities through `scripts/qwen-audio.py`: text-to-speech, speech-to-text, voice design, and voice cloning.
 
-## Prerequisites
+Always treat the skill root as the runtime project. The Python virtual environment must live at:
 
-- Python 3.10+
+```text
+<qwen-audio-skill-path>/.venv
+```
 
-### Environment checks
+Do not create a separate `qwen-audio-runtime` directory. Do not run `uv init` for this skill. The installed skill already contains `pyproject.toml`.
 
-Before using any capability, verify that all items in `./references/env-check-list.md` are complete.
+## Runtime Setup
 
-## Capabilities
+Complete setup before using TTS or STT. Run commands from the skill root directory unless a command explicitly says otherwise.
 
-### Voice Management
+### Windows
 
-Voices are stored in the `./voices/` directory at the skill root level. Each voice has its own folder containing:
+Use PowerShell:
+
+```powershell
+$SkillDir = "<qwen-audio-skill-path>"
+Set-Location $SkillDir
+$env:UV_PYPI_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+if (-not (Test-Path ".venv")) {
+  uv venv ".venv" --python 3.12
+}
+
+uv sync --prerelease=allow --no-cache
+```
+
+If `uv sync` fails, stop and report the exact failing package and error. Do not repeatedly retry with different cache directories. Do not fall back to `pip` unless the user explicitly approves a manual repair.
+
+For Windows GPU detection, run:
+
+```powershell
+nvidia-smi
+```
+
+If `nvidia-smi` succeeds and prints `NVIDIA-SMI`, keep the CUDA torch source in `pyproject.toml`. If no NVIDIA GPU is available, prefer a CPU-only `pyproject.toml` shape before syncing:
+
+```toml
+[project]
+name = "qwen3-audio"
+version = "0.1.0"
+description = "Qwen audio runtime"
+requires-python = ">=3.10"
+dependencies = [
+    "qwen-asr",
+    "qwen-tts>=0.1.1",
+]
+
+[tool.uv]
+extra-index-url = ["https://pypi.org/simple"]
+override-dependencies = ["transformers==4.57.6"]
+```
+
+### macOS
+
+Use the skill root and install the MLX backend into the skill-local `.venv`:
+
+```bash
+cd "<qwen-audio-skill-path>"
+export UV_PYPI_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple"
+
+if [ ! -d .venv ]; then
+  uv venv .venv --python 3.12
+fi
+
+uv add mlx-audio --prerelease=allow --no-cache
+```
+
+### Verify
+
+After setup, verify imports with the skill-local environment:
+
+```bash
+uv run --no-sync --project "<qwen-audio-skill-path>" python -c "import sys; print(sys.version)"
+```
+
+Windows backend check:
+
+```powershell
+uv run --no-sync --project "<qwen-audio-skill-path>" python -c "import qwen_asr, qwen_tts, torch; print('qwen-asr/qwen-tts/torch ok'); print(torch.__version__, torch.cuda.is_available())"
+```
+
+macOS backend check:
+
+```bash
+uv run --no-sync --project "<qwen-audio-skill-path>" python -c "import mlx_audio; print('mlx-audio ok')"
+```
+
+Use `--no-sync` for normal skill commands after setup so Codex does not unexpectedly re-resolve or reinstall dependencies.
+
+## Command Pattern
+
+Use this command shape for all capabilities:
+
+```bash
+uv run --no-sync --project "<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" <command> ...
+```
+
+## Voice Management
+
+Voices are stored in `./voices/` at the skill root. Each voice folder contains:
+
 - `ref_audio.wav` - Reference audio file
 - `ref_text.txt` - Reference text transcript
 - `ref_instruct.txt` - Voice style description
 
+### Create a Voice
 
-#### Create a Voice
-Create a reusable voice profile using VoiceDesign model. The `--instruct` parameter is required to describe the voice style:
-```bash
-uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" voice create --text "This is a sample voice reference text." --instruct "A warm, friendly female voice with a professional tone." --id "my-voice-id"
-```
-Optional: `--id "my-voice-id"` to specify a custom voice ID.
-
-**Returns (JSON):**
-```json
-{
-  "id": "my-voice-id",
-  "ref_audio": "/<qwen-audio-skill-path>/voices/my-voice-id/ref_audio.wav",
-  "ref_text": "This is a sample voice reference text.",
-  "instruct": "A warm, friendly female voice with a professional tone.",
-  "duration": 3.456,
-  "sample_rate": 24000,
-  "success": true
-}
-```
-
-
-#### List Voices
-List all created voice profiles:
-```bash
-uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" voice list
-```
-
-**Returns (JSON):**
-```json
-[
-  {
-    "id": "my-voice-id",
-    "ref_audio": "/<qwen-audio-skill-path>/voices/my-voice-id/ref_audio.wav",
-    "ref_text": "This is a sample voice reference text.",
-    "instruct": "A warm, friendly female voice with a professional tone.",
-    "duration": 3.456,
-    "sample_rate": 24000
-  }
-]
-```
-
-
-### Text to Speech
-
-#### TTS Voice Pre-check (Required)
-Before any `tts` generation, always confirm the available voices first:
-
-1. Run `voice list` to check the current voice profiles.
-2. If the returned list is empty, stop and ask the user what kind of voice they want to create first. Offer style choices, for example:
-   - Warm and friendly female narrator
-   - Deep and steady male broadcast voice
-   - Young and energetic neutral voice
-   - Calm and professional customer-service voice
-   Then run `voice create` only after the user confirms a style.
-3. If the returned list is not empty, show the available voice `id` values and ask the user to confirm which one should be used as the `--ref_voice` reference id for generation.
-
-Only run `tts` after this confirmation step is complete.
+Create a reusable voice profile with the VoiceDesign model. `--instruct` is required:
 
 ```bash
-uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav"
+uv run --no-sync --project "<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" voice create --text "This is a sample voice reference text." --instruct "A warm, friendly female voice with a professional tone." --id "my-voice-id"
 ```
-**Returns (JSON):**
-```json
-{
-  "audio_path": "/path/to/save.wav",
-  "duration": 1.234,
-  "sample_rate": 24000,
-  "success": true
-}
+
+Optional: pass `--id "my-voice-id"` to choose a stable voice ID.
+
+### List Voices
+
+```bash
+uv run --no-sync --project "<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" voice list
+```
+
+## Text to Speech
+
+### TTS Voice Pre-check
+
+Before `tts` generation:
+
+1. Run `voice list`.
+2. If the list is empty, ask the user what kind of voice to create first. Offer concise choices such as warm female narrator, deep male broadcast voice, young energetic neutral voice, or calm professional service voice.
+3. If voices exist, show the available `id` values and ask which one to use as `--ref_voice`.
+
+Only run `tts` after the user confirms the voice choice.
+
+```bash
+uv run --no-sync --project "<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav" --ref_voice "my-voice-id"
 ```
 
 ### Voice Cloning
-Clone any voice using a reference audio sample. Provide the wav file and its transcript:
+
+Provide both reference audio and its transcript:
+
 ```bash
-uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav" --ref_audio "sample_audio.wav" --ref_text "This is what my voice sounds like."
+uv run --no-sync --project "<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "hello world" --output "/path/to/save.wav" --ref_audio "sample_audio.wav" --ref_text "This is what my voice sounds like."
 ```
-ref_audio: reference audio to clone
-ref_text: transcript of the reference audio
 
+## Speech to Text
 
-#### Use a Created Voice
-After creating a voice, use it for TTS with the `--ref_voice` parameter. The instruct will be automatically loaded:
 ```bash
-uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" tts --text "New text to speak" --output "/path/to/save.wav" --ref_voice "my-voice-id" --instruct "Very happy and excited."
+uv run --no-sync --project "<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" stt --audio "/sample_audio.wav" --output "/path/to/save.txt" --output-format txt
 ```
-Optional: `--instruct` to emotion control.
 
+`--output-format` accepts `txt`, `ass`, `srt`, or `all`.
 
-### Automatic Speech Recognition (STT)
-```bash
-uv run --project "/<qwen-audio-skill-path>" python "<qwen-audio-skill-path>/scripts/qwen-audio.py" stt --audio "/sample_audio.wav" --output "/path/to/save.txt" --output-format txt
-```
-Test audio: https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav
-output-format: "txt" | "ass" | "srt" | "all"
+Test audio:
 
-**Returns (JSON):**
-```json
-{
-  "text": "transcribed text content",
-  "duration": 10.5,
-  "sample_rate": 16000,
-  "files": ["/path/to/save.txt", "/path/to/save.srt"],
-  "success": true
-}
+```text
+https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_en.wav
 ```
