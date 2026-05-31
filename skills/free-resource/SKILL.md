@@ -1,11 +1,11 @@
 ---
 name: free-resource
-description: "Search and retrieve royalty-free media from Pixabay (images/videos), Freesound (audio effects), and Jamendo (music/BGM). Use when the user needs to find stock photos, illustrations, vectors, videos, sound effects, or background music, download media, or query media libraries with filters."
+description: "Search and retrieve royalty-free media from Pexels (photos/videos), Pixabay (images/videos), Freesound (audio effects), and Jamendo (music/BGM). Use when the user needs to find stock photos, illustrations, vectors, videos, sound effects, or background music, download media, or query media libraries with filters."
 ---
 
 # Free Resource
 
-Search and download royalty-free images, videos, sound effects, and music from Pixabay, Freesound, and Jamendo.
+Search and download royalty-free photos, images, videos, sound effects, and music from Pexels, Pixabay, Freesound, and Jamendo.
 
 ## Quick Start
 
@@ -18,6 +18,8 @@ cp config.example.json config.json
 # 3. Use without passing API keys
 bun ./scripts/jamendo.ts search --query "background" --limit 5
 bun ./scripts/freesound.ts search --query "piano"
+bun ./scripts/pexels.ts search-photos --query "nature"
+bun ./scripts/pexels.ts search-videos --query "ocean waves"
 bun ./scripts/pixabay.ts search-images --query "nature"
 ```
 
@@ -27,6 +29,9 @@ API keys are stored in `config.json`. Copy `config.example.json` and fill in you
 
 ```json
 {
+  "pexels": {
+    "api_key": "YOUR_PEXELS_API_KEY"
+  },
   "pixabay": {
     "api_key": "YOUR_PIXABAY_API_KEY"
   },
@@ -43,6 +48,7 @@ API keys are stored in `config.json`. Copy `config.example.json` and fill in you
 
 | Platform | Type | Get API Key |
 |----------|------|-------------|
+| Pexels | Photos/Videos | https://www.pexels.com/api/ |
 | Pixabay | Images/Videos | https://pixabay.com/accounts/register/ |
 | Freesound | Audio Effects | https://freesound.org/apiv2/apply |
 | Jamendo | Music/BGM | https://devportal.jamendo.com/ |
@@ -50,8 +56,36 @@ API keys are stored in `config.json`. Copy `config.example.json` and fill in you
 ### API Key Priority
 
 1. **CLI flag**: `--key`, `--token`, or `--client-id`
-2. **Environment variable**: `PIXABAY_API_KEY`, `FREESOUND_API_TOKEN`, `JAMENDO_CLIENT_ID`
+2. **Environment variable**: `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `FREESOUND_API_TOKEN`, `JAMENDO_CLIENT_ID`
 3. **Config file**: `config.json`
+
+---
+
+## Pexels (Photos & Videos)
+
+### Search Photos
+
+```bash
+bun ./scripts/pexels.ts search-photos --query "city skyline" --orientation landscape --per-page 5
+```
+
+Flags: `--query`, `--orientation` (landscape|portrait|square), `--size` (large|medium|small), `--color`, `--locale`, `--page`, `--per-page` (1-80), `--output` (save to file).
+
+### Search Videos
+
+```bash
+bun ./scripts/pexels.ts search-videos --query "ocean waves" --orientation landscape --size medium --per-page 5
+```
+
+Flags: `--query`, `--orientation` (landscape|portrait|square), `--size` (large|medium|small), `--locale`, `--page`, `--per-page` (1-80), `--output`.
+
+### Download
+
+```bash
+bun ./scripts/pexels.ts download --url "https://images.pexels.com/..." --output "/path/to/save.jpg"
+```
+
+Always include Pexels and creator attribution when possible.
 
 ---
 

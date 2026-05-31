@@ -2,6 +2,73 @@
 
 ---
 
+## Pexels API
+
+### Endpoints
+
+| Endpoint | URL | Description |
+|----------|-----|-------------|
+| Search Photos | `GET https://api.pexels.com/v1/search` | Search royalty-free photos |
+| Search Videos | `GET https://api.pexels.com/v1/videos/search` | Search royalty-free videos |
+
+### Authentication
+
+Send the API key in the `Authorization` header:
+
+```bash
+curl -H "Authorization: YOUR_API_KEY" "https://api.pexels.com/v1/search?query=nature"
+```
+
+### Common Parameters (Photos & Videos)
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `query` | string | **required** | Search term |
+| `orientation` | string | – | `landscape`, `portrait`, or `square` |
+| `size` | string | – | `large`, `medium`, or `small` |
+| `locale` | string | – | Search locale, e.g. `en-US`, `zh-CN`, `ja-JP` |
+| `page` | int | `1` | Page number |
+| `per_page` | int | `15` | Results per page (1-80) |
+
+### Photo-Only Parameters
+
+| Parameter | Type | Values |
+|-----------|------|--------|
+| `color` | string | `red`, `orange`, `yellow`, `green`, `turquoise`, `blue`, `violet`, `pink`, `brown`, `black`, `gray`, `white`, or a hex color |
+
+### Photo Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier |
+| `url` | Source page on Pexels |
+| `width`, `height` | Source dimensions |
+| `photographer`, `photographer_url`, `photographer_id` | Contributor info |
+| `avg_color` | Average image color |
+| `src` | Object with `original`, `large2x`, `large`, `medium`, `small`, `portrait`, `landscape`, and `tiny` URLs |
+| `alt` | Alt text when available |
+
+### Video Response Fields
+
+| Field | Description |
+|-------|-------------|
+| `id` | Unique identifier |
+| `url` | Source page on Pexels |
+| `width`, `height` | Source dimensions |
+| `duration` | Duration in seconds |
+| `image` | Poster image URL |
+| `user` | Contributor info |
+| `video_files` | Array of renditions with `id`, `quality`, `file_type`, `width`, `height`, `fps`, `link`, and `size` |
+| `video_pictures` | Array of preview frame URLs |
+
+### Usage Notes
+
+- Pexels asks API users to show a prominent link to Pexels.
+- Credit photographers when possible, e.g. "Photo by NAME on Pexels" with links to the media page and creator profile.
+- Public stats such as views, downloads, and photographer stats are not returned by the API.
+
+---
+
 ## Pixabay API
 
 ### Endpoints
